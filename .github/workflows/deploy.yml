@@ -9,45 +9,40 @@ on:
 jobs:
   deploy:
     name: Deploy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Upload source to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "."
-          target: "${{ secrets.EC2_APP_DIR }}"
-          rm: false
-          overwrite: true
-          strip_components: 0
-          exclude: |
-            .git
-            .github
-            .env
-            .env.prod
-            .venv
-            __pycache__
-            infra/.terraform
-            infra/terraform.tfvars
-            infra/terraform.tfstate*
+      - name: Preserve production env
+        run: |
+          if [ -f "${{ secrets.EC2_APP_DIR }}/.env.prod" ]; then
+            cp "${{ secrets.EC2_APP_DIR }}/.env.prod" /tmp/finance-env.prod
+          fi
 
-      - name: Rebuild containers on EC2
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -e
-            cd "${{ secrets.EC2_APP_DIR }}"
-            docker compose -f docker-compose.prod.yml up -d --build
-            docker compose -f docker-compose.prod.yml ps
-            curl -fsS http://localhost/docs > /dev/null
+      - name: Sync source
+        run: |
+          mkdir -p "${{ secrets.EC2_APP_DIR }}"
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.env' \
+            --exclude '.env.prod' \
+            --exclude '.venv' \
+            --exclude '__pycache__' \
+            --exclude 'infra/.terraform' \
+            --exclude 'infra/terraform.tfvars' \
+            --exclude 'infra/terraform.tfstate*' \
+            ./ "${{ secrets.EC2_APP_DIR }}/"
+          if [ -f /tmp/finance-env.prod ]; then
+            mv /tmp/finance-env.prod "${{ secrets.EC2_APP_DIR }}/.env.prod"
+          fi
+
+      - name: Rebuild containers
+        working-directory: ${{ secrets.EC2_APP_DIR }}
+        run: |
+          docker compose -f docker-compose.prod.yml up -d --build
+          docker compose -f docker-compose.prod.yml ps
+          curl -fsS http://localhost/docs > /dev/null

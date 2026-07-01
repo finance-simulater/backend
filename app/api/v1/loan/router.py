@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
 
 from app.api.v1.loan.schema import LoanCreate, LoanResponse
 from app.api.v1.loan.service import LoanService
+from app.database import get_db
 
 router = APIRouter(prefix="/api/v1/loans", tags=["loans"])
 
 
-def get_loan_service() -> LoanService:
-    return LoanService()
+def get_loan_service(db: Session = Depends(get_db)) -> LoanService:
+    return LoanService(db)
 
 
 @router.get("/", response_model=list[LoanResponse])

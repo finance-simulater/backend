@@ -1,12 +1,11 @@
 from logging.config import fileConfig
-import os
 
-from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
 from app.api.v1 import models  # noqa: F401
+from app.core.config import settings
 from app.database import Base
 
 # this is the Alembic Config object, which provides
@@ -18,13 +17,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-load_dotenv()
-
-database_url = os.getenv("DATABASE_URL")
-if database_url is None:
-    raise RuntimeError("DATABASE_URL is not set")
-
-config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", settings.database_url)
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

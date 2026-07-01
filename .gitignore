@@ -4,6 +4,13 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 *.log
 .DS_Store
 *.egg-info/
+*.pem
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.*
+terraform.tfvars

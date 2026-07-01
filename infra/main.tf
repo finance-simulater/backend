@@ -82,6 +82,41 @@ resource "aws_security_group" "web" {
   }
 }
 
+resource "aws_security_group" "rds" {
+  name        = "${var.project_name}-rds-sg"
+  description = "Allow MySQL from local IP and EC2"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "MySQL from local IP"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_allowed_cidr]
+  }
+
+  ingress {
+    description     = "MySQL from EC2"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web.id]
+  }
+
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "${var.project_name}-rds-sg"
+    Project = var.project_name
+  }
+}
+
 resource "aws_instance" "web" {
   ami                         = data.aws_ami.ubuntu_2204.id
   instance_type               = var.instance_type
@@ -126,4 +161,37 @@ resource "aws_eip" "web" {
 resource "aws_eip_association" "web" {
   instance_id   = aws_instance.web.id
   allocation_id = aws_eip.web.id
+}
+
+resource "aws_db_subnet_group" "mysql" {
+  name       = "${var.project_name}-mysql-subnet-group"
+  subnet_ids = data.aws_subnets.default.ids
+
+  tags = {
+    Name    = "${var.project_name}-mysql-subnet-group"
+    Project = var.project_name
+  }
+}
+
+resource "aws_db_instance" "mysql" {
+  identifier             = var.db_identifier
+  engine                 = "mysql"
+  instance_class         = var.db_instance_class
+  allocated_storage      = var.db_allocated_storage
+  storage_type           = "gp2"
+  db_name                = var.db_name
+  username               = var.db_username
+  password               = var.db_password
+  db_subnet_group_name   = aws_db_subnet_group.mysql.name
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  publicly_accessible    = var.db_publicly_accessible
+
+  backup_retention_period = 0
+  deletion_protection     = false
+  skip_final_snapshot     = true
+
+  tags = {
+    Name    = var.db_identifier
+    Project = var.project_name
+  }
 }

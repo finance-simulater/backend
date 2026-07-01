@@ -53,3 +53,4 @@ ssh -i <your-key.pem> ubuntu@<ec2_public_ip>
 - SSH 22번 포트는 내 IP `/32`만 허용한다.
 - FastAPI 8000 포트는 직접 열지 않는다. 운영에서는 Nginx가 80/443으로 프록시한다.
 - 도메인 DNS A 레코드는 `terraform output ec2_public_ip` 값으로 연결한다.
+- 학습 단계의 RDS는 로컬 접속 확인을 위해 public endpoint를 사용한다. 운영 전환 시 private RDS로 변경한다.

@@ -9,6 +9,9 @@ dependencies = [
     "pydantic-settings>=2.14.0",
     "python-dotenv>=1.2.2",
     "email-validator>=2.3.0",
+    "sqlalchemy>=2.0.51",
+    "pymysql>=1.2.0",
+    "alembic>=1.18.5",
 ]
 
 [tool.setuptools.packages.find]

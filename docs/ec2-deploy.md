@@ -57,3 +57,39 @@ http://api.<your-domain>/docs
 ```bash
 docker compose -f docker-compose.prod.yml down
 ```
+
+## 6. GitHub Actions 자동 배포
+
+GitHub 저장소의 `Settings -> Secrets and variables -> Actions`에 아래 repository secrets를 등록한다.
+
+```text
+EC2_HOST=EC2 Elastic IP 또는 api 도메인
+EC2_USERNAME=ubuntu
+EC2_SSH_KEY=.pem 파일 내용 전체
+EC2_APP_DIR=/home/ubuntu/backend
+```
+
+`EC2_SSH_KEY`는 파일 경로가 아니라 private key 파일의 내용이다.
+
+Mac에서 복사할 때:
+
+```bash
+cat ~/.ssh/study-ec2.pem
+```
+
+출력되는 아래 전체 내용을 GitHub secret 값으로 넣는다.
+
+```text
+-----BEGIN ... PRIVATE KEY-----
+...
+-----END ... PRIVATE KEY-----
+```
+
+이후 `main` 브랜치에 push하면 GitHub Actions가 repository 파일을 EC2로 업로드한 뒤 아래 작업을 자동으로 수행한다.
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+curl -fsS http://localhost/docs
+```
+
+EC2의 `.env.prod`는 업로드 대상에서 제외되어 서버에 있는 운영 환경변수가 유지된다.

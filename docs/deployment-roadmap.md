@@ -68,6 +68,7 @@ AWS 리소스는 처음에는 콘솔로 흐름을 확인하고, 최종적으로 
    - 테스트 성공 후 EC2에 SSH 접속한다.
    - `git pull`, Alembic 마이그레이션, `docker compose -f docker-compose.prod.yml up -d --build`를 실행한다.
    - GitHub Secrets에 `EC2_HOST`, `EC2_SSH_KEY`, `SECRET_KEY`, 테스트용 DB URL 등을 등록한다.
+   - 현재 1차 자동 배포는 EC2 SSH 접속, `git pull`, Docker Compose 재빌드, `/docs` 헬스체크까지 수행한다.
 
 10. 도메인 최종 연결
     - Cloudflare DNS에서 `api.example.com`을 EC2 Elastic IP로 연결한다.

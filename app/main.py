@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.v1 import models  # noqa: F401
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.loan.router import router as loan_router
 from app.api.v1.user.router import router as user_router

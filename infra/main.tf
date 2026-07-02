@@ -186,6 +186,12 @@ resource "aws_instance" "web" {
     Name    = "${var.project_name}-server"
     Project = var.project_name
   }
+
+  lifecycle {
+    ignore_changes = [
+      ami,
+    ]
+  }
 }
 
 resource "aws_eip" "web" {

@@ -43,6 +43,8 @@ docker compose -f docker-compose.prod.yml logs -f nginx
 
 ```bash
 curl http://localhost/docs
+curl http://localhost/health
+curl http://localhost/health/ready
 ```
 
 브라우저:
@@ -50,6 +52,13 @@ curl http://localhost/docs
 ```text
 http://<EC2_PUBLIC_IP>/docs
 http://api.<your-domain>/docs
+```
+
+헬스체크 엔드포인트:
+
+```text
+GET /health        # 앱 프로세스 생존 확인
+GET /health/ready  # DB 연결까지 확인
 ```
 
 ## 5. HTTPS 설정

@@ -77,10 +77,10 @@ jobs:
           docker compose -f docker-compose.prod.yml up -d
           docker compose -f docker-compose.prod.yml ps
           API_DOMAIN="$(awk -F= '$1 == "API_DOMAIN" {print substr($0, index($0, "=") + 1); exit}' .env.prod | tr -d '"' | tr -d "'")"
-          HEALTH_URL="http://localhost/docs"
+          HEALTH_URL="http://localhost/health/ready"
           CURL_ARGS="-fsS"
           if [ -n "$API_DOMAIN" ] && [ -f "/etc/letsencrypt/live/$API_DOMAIN/fullchain.pem" ]; then
-            HEALTH_URL="https://localhost/docs"
+            HEALTH_URL="https://localhost/health/ready"
             CURL_ARGS="-kfsS"
           fi
           for i in $(seq 1 30); do

@@ -72,3 +72,58 @@ variable "db_publicly_accessible" {
   type        = bool
   default     = true
 }
+
+variable "frontend_bucket_name" {
+  description = "S3 bucket name for frontend build artifacts. Leave empty to generate one from project name and AWS account ID."
+  type        = string
+  default     = ""
+}
+
+variable "frontend_bucket_force_destroy" {
+  description = "Allow Terraform to delete the frontend S3 bucket even when it contains files."
+  type        = bool
+  default     = false
+}
+
+variable "frontend_domain_names" {
+  description = "Optional custom frontend domain names for CloudFront aliases. ACM certificate must be in us-east-1 when this is set."
+  type        = list(string)
+  default     = []
+}
+
+variable "frontend_acm_certificate_arn" {
+  description = "Optional ACM certificate ARN for CloudFront custom domain. The certificate must be issued in us-east-1."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.frontend_acm_certificate_arn == "" || can(regex(":us-east-1:", var.frontend_acm_certificate_arn))
+    error_message = "frontend_acm_certificate_arn must be empty or an ACM certificate ARN from us-east-1."
+  }
+}
+
+variable "upload_bucket_name" {
+  description = "S3 bucket name for user-uploaded files. Leave empty to generate one from project name and AWS account ID."
+  type        = string
+  default     = ""
+}
+
+variable "upload_bucket_force_destroy" {
+  description = "Allow Terraform to delete the upload S3 bucket even when it contains files."
+  type        = bool
+  default     = false
+}
+
+variable "upload_allowed_origins" {
+  description = "Browser origins allowed to upload directly to the upload S3 bucket with presigned URLs."
+  type        = list(string)
+  default = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+  ]
+
+  validation {
+    condition     = length(var.upload_allowed_origins) > 0
+    error_message = "upload_allowed_origins must contain at least one origin."
+  }
+}

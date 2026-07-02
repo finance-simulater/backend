@@ -11,3 +11,17 @@ db_password            = "change-me-strong-password"
 db_instance_class      = "db.t3.micro"
 db_allocated_storage   = 20
 db_publicly_accessible = true
+
+frontend_bucket_name          = ""
+frontend_bucket_force_destroy = false
+# CloudFront custom domain requires an ACM certificate issued in us-east-1.
+frontend_domain_names        = []
+frontend_acm_certificate_arn  = ""
+
+upload_bucket_name          = ""
+upload_bucket_force_destroy = false
+upload_allowed_origins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://fsimulation.store",
+]

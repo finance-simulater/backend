@@ -5,6 +5,11 @@ DOMAIN="${API_DOMAIN:-_}"
 CERT_DIR="/etc/letsencrypt/live/$DOMAIN"
 CONF_FILE="/etc/nginx/conf.d/default.conf"
 
+if [ "$DOMAIN" != "_" ] && ! printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9.-]+$'; then
+  echo "Invalid API_DOMAIN: $DOMAIN"
+  exit 1
+fi
+
 if [ "$DOMAIN" != "_" ] && [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
   cat > "$CONF_FILE" <<EOF
 server {

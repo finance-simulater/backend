@@ -38,6 +38,12 @@ sudo mkdir -p /etc/letsencrypt /var/www/certbot
 
 docker compose -f docker-compose.prod.yml up -d nginx
 
+if [ -f /etc/letsencrypt/live/"$API_DOMAIN"/fullchain.pem ]; then
+  echo "Certificate already exists for $API_DOMAIN"
+  docker compose -f docker-compose.prod.yml restart nginx
+  exit 0
+fi
+
 echo "Requesting real certificate from Let's Encrypt"
 docker compose -f docker-compose.prod.yml run --rm certbot certonly \
   --webroot \
@@ -45,7 +51,6 @@ docker compose -f docker-compose.prod.yml run --rm certbot certonly \
   --email "$LETSENCRYPT_EMAIL" \
   --agree-tos \
   --no-eff-email \
-  --force-renewal \
   -d "$API_DOMAIN"
 
 docker compose -f docker-compose.prod.yml restart nginx

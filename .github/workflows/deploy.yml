@@ -76,8 +76,15 @@ jobs:
           docker compose -f docker-compose.prod.yml run --rm fastapi alembic upgrade head
           docker compose -f docker-compose.prod.yml up -d
           docker compose -f docker-compose.prod.yml ps
+          API_DOMAIN="$(awk -F= '$1 == "API_DOMAIN" {print substr($0, index($0, "=") + 1); exit}' .env.prod | tr -d '"' | tr -d "'")"
+          HEALTH_URL="http://localhost/docs"
+          CURL_ARGS="-fsS"
+          if [ -n "$API_DOMAIN" ] && [ -f "/etc/letsencrypt/live/$API_DOMAIN/fullchain.pem" ]; then
+            HEALTH_URL="https://localhost/docs"
+            CURL_ARGS="-kfsS"
+          fi
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost/docs > /dev/null; then
+            if curl $CURL_ARGS "$HEALTH_URL" > /dev/null; then
               echo "Health check passed"
               exit 0
             fi

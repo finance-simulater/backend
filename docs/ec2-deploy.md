@@ -52,13 +52,41 @@ http://<EC2_PUBLIC_IP>/docs
 http://api.<your-domain>/docs
 ```
 
-## 5. 중지
+## 5. HTTPS 설정
+
+도메인이 EC2 Elastic IP를 바라보고 있고, AWS 보안그룹에서 80/443이 열려 있어야 한다.
+
+EC2의 `/home/ubuntu/backend/.env.prod`에 운영 도메인과 Let's Encrypt 알림 이메일을 추가한다.
+
+```text
+API_DOMAIN=api.<your-domain>
+LETSENCRYPT_EMAIL=<your-email>
+```
+
+처음 한 번만 인증서를 발급한다.
+
+```bash
+cd /home/ubuntu/backend
+chmod +x scripts/init-letsencrypt.sh scripts/renew-letsencrypt.sh
+./scripts/init-letsencrypt.sh
+docker compose -f docker-compose.prod.yml up -d
+curl -I https://api.<your-domain>/docs
+```
+
+인증서 갱신은 필요할 때 아래 명령으로 실행한다.
+
+```bash
+cd /home/ubuntu/backend
+./scripts/renew-letsencrypt.sh
+```
+
+## 6. 중지
 
 ```bash
 docker compose -f docker-compose.prod.yml down
 ```
 
-## 6. GitHub Actions 자동 배포
+## 7. GitHub Actions 자동 배포
 
 EC2를 GitHub Actions self-hosted runner로 등록한다.
 

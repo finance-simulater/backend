@@ -2,7 +2,9 @@ project_name     = "finance-simulater"
 aws_region       = "ap-northeast-2"
 instance_type    = "t3.micro"
 key_pair_name    = "your-aws-key-pair-name"
-ssh_allowed_cidr = "123.123.123.123/32"
+ssh_allowed_cidrs = [
+  "123.123.123.123/32",
+]
 
 db_identifier          = "finance-mysql"
 db_name                = "finance"

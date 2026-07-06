@@ -22,8 +22,15 @@ variable "key_pair_name" {
 }
 
 variable "ssh_allowed_cidr" {
-  description = "CIDR allowed to SSH into EC2, e.g. 123.123.123.123/32"
+  description = "Deprecated. Single CIDR allowed to SSH into EC2, e.g. 123.123.123.123/32. Prefer ssh_allowed_cidrs."
   type        = string
+  default     = ""
+}
+
+variable "ssh_allowed_cidrs" {
+  description = "CIDR blocks allowed to SSH into EC2, e.g. [\"123.123.123.123/32\"]"
+  type        = list(string)
+  default     = []
 }
 
 variable "db_identifier" {

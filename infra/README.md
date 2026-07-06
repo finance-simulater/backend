@@ -23,7 +23,17 @@ Terraform에는 키페어 이름만 입력한다.
 curl ifconfig.me
 ```
 
-확인한 IP 뒤에 `/32`를 붙여 `ssh_allowed_cidr`에 입력한다.
+확인한 IP 뒤에 `/32`를 붙여 `ssh_allowed_cidrs`에 입력한다.
+
+예시:
+
+```hcl
+ssh_allowed_cidrs = [
+  "내IP/32",
+  "팀원1IP/32",
+  "팀원2IP/32",
+]
+```
 
 ## 실행
 
@@ -50,7 +60,7 @@ ssh -i <your-key.pem> ubuntu@<ec2_public_ip>
 ## 주의
 
 - `terraform.tfvars`, `terraform.tfstate`, `.pem` 파일은 Git에 올리지 않는다.
-- SSH 22번 포트는 내 IP `/32`만 허용한다.
+- SSH 22번 포트는 필요한 팀원 IP `/32`만 허용한다.
 - FastAPI 8000 포트는 직접 열지 않는다. 운영에서는 Nginx가 80/443으로 프록시한다.
 - 도메인 DNS A 레코드는 `terraform output ec2_public_ip` 값으로 연결한다.
 - 학습 단계의 RDS는 로컬 접속 확인을 위해 public endpoint를 사용한다. 운영 전환 시 private RDS로 변경한다.
@@ -68,7 +78,7 @@ terraform output frontend_url
 프론트엔드 빌드 산출물은 S3 bucket에 업로드한다.
 
 ```bash
-aws s3 sync ./dist s3://<frontend_bucket_name> --delete
+aws s3 sync ./out s3://<frontend_bucket_name> --delete
 ```
 
 CloudFront 캐시를 즉시 비우려면 distribution ID로 invalidation을 실행한다.

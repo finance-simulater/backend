@@ -49,6 +49,7 @@ locals {
   frontend_bucket_name = var.frontend_bucket_name != "" ? var.frontend_bucket_name : "${var.project_name}-frontend-${data.aws_caller_identity.current.account_id}"
   frontend_origin_id   = "${var.project_name}-frontend-s3-origin"
   upload_bucket_name   = var.upload_bucket_name != "" ? var.upload_bucket_name : "${var.project_name}-uploads-${data.aws_caller_identity.current.account_id}"
+  ssh_allowed_cidrs    = length(var.ssh_allowed_cidrs) > 0 ? var.ssh_allowed_cidrs : [var.ssh_allowed_cidr]
 }
 
 data "aws_iam_policy_document" "ec2_assume_role" {
@@ -87,7 +88,7 @@ resource "aws_security_group" "web" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.ssh_allowed_cidr]
+    cidr_blocks = local.ssh_allowed_cidrs
   }
 
   ingress {
@@ -130,7 +131,7 @@ resource "aws_security_group" "rds" {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
-    cidr_blocks = [var.ssh_allowed_cidr]
+    cidr_blocks = local.ssh_allowed_cidrs
   }
 
   ingress {

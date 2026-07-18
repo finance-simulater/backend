@@ -93,7 +93,7 @@ class LoanService:
 
     def apply_for_loan(self, user_id: int, principal: int, duration_months: int) -> Loan:
         if self.repository.find_active_by_user(user_id) is not None:
-            raise conflict("이미 진행 중인 대출이 있어 신규 신청이 불가합니다")
+            raise conflict("이미 진행 중인 대출이 있어 신규 신청이 불가합니다", code="LOAN_ALREADY_ACTIVE")
 
         simulation_state = self._get_simulation_state(user_id)
         grade_policy = self._get_grade_policy(simulation_state.credit_score)
@@ -101,7 +101,8 @@ class LoanService:
         # AI 자동심사->신용등급별 한도 초과 여부 승인/거절 판단
         if principal > grade_policy.credit_limit:
             raise unprocessable(
-                f"신청 금액이 {grade_policy.grade}등급 한도({grade_policy.credit_limit:,}원)를 초과했습니다"
+                f"신청 금액이 {grade_policy.grade}등급 한도({grade_policy.credit_limit:,}원)를 초과했습니다",
+                code="LOAN_LIMIT_EXCEEDED",
             )
 
         interest_rate = self._resolve_interest_rate(grade_policy.base_interest_rate, duration_months)

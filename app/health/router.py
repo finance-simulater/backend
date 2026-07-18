@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.exceptions import service_unavailable
 from app.database import SessionLocal
 
 router = APIRouter(tags=["health"])
@@ -18,9 +19,6 @@ def readiness_check() -> dict[str, str]:
         with SessionLocal() as db:
             db.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database is not ready",
-        ) from exc
+        raise service_unavailable("Database is not ready") from exc
 
     return {"status": "ready"}

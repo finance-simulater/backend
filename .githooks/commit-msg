@@ -1,0 +1,23 @@
+#!/bin/sh
+# docs/CONVENTIONS.md 커밋 메시지 형식을 검사한다: "type: 요약 (#이슈번호)"
+# 활성화: git config core.hooksPath .githooks
+
+commit_msg_file="$1"
+first_line=$(head -n1 "$commit_msg_file")
+
+# merge/revert 커밋은 검사하지 않는다.
+case "$first_line" in
+  Merge\ *|Revert\ *) exit 0 ;;
+esac
+
+pattern='^(feat|fix|docs|refactor|test|chore): .+'
+
+if ! echo "$first_line" | grep -Eq "$pattern"; then
+  echo "커밋 메시지 형식이 올바르지 않습니다." >&2
+  echo "형식: type: 요약 (#이슈번호)   예) feat: 대출 신청 API 추가 (#12)" >&2
+  echo "type: feat / fix / docs / refactor / test / chore" >&2
+  echo "실제 메시지: $first_line" >&2
+  exit 1
+fi
+
+exit 0

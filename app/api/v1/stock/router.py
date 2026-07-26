@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.v1.stock.schema import StockPortfolioResponse
+from app.api.v1.stock.schema import (
+    StockActionResponse,
+    StockBuyRequest,
+    StockPortfolioResponse,
+    StockSellRequest,
+)
 from app.api.v1.stock.service import StockService
 from app.database import get_db
 
@@ -21,5 +26,21 @@ async def get_portfolio(
     return service.get_portfolio(user_id)
 
 
-# TODO: POST /buy   → 매수
-# TODO: POST /sell  → 매도
+@router.post("/buy", response_model=StockActionResponse, status_code=201)
+async def buy_stock(
+    user_id: int,
+    request: StockBuyRequest,
+    service: StockService = Depends(get_stock_service),
+):
+    """주식 매수. 잔액 부족 시 400 INSUFFICIENT_BALANCE"""
+    return service.buy(user_id, request)
+
+
+@router.post("/sell", response_model=StockActionResponse)
+async def sell_stock(
+    user_id: int,
+    request: StockSellRequest,
+    service: StockService = Depends(get_stock_service),
+):
+    """주식 매도(부분·전체). amount = current_value 전액이면 전체 매도"""
+    return service.sell(user_id, request)

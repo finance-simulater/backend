@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ConfigDict
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
 
 # 주식 타입별 UI 표시 정보 (기획서 기준)
 STOCK_META = {
@@ -30,3 +31,25 @@ class StockPortfolioResponse(BaseModel):
     total_current_value: int    # 총 평가금액
     total_profit_loss: int      # 총 평가손익
     holdings: list[StockHoldingItem]
+
+
+StockType = Literal["high_vol", "low_vol", "index"]
+
+
+class StockBuyRequest(BaseModel):
+    """POST /api/v1/stocks/buy 요청"""
+    stock_type: StockType
+    amount: int = Field(gt=0, description="매수 금액(원)")
+
+
+class StockSellRequest(BaseModel):
+    """POST /api/v1/stocks/sell 요청. amount = current_value 전액이면 전체 매도"""
+    stock_type: StockType
+    amount: int = Field(gt=0, description="매도 금액(원)")
+
+
+class StockActionResponse(BaseModel):
+    """매수·매도 공통 응답"""
+    holding: StockHoldingItem | None  # 전체 매도 시 None
+    cash_balance: int                 # 처리 후 현금 잔액
+    realized_amount: int | None = None  # 매도 시 실현 금액 (매수 시 None)

@@ -1,5 +1,4 @@
 from redis import Redis
-from redis.exceptions import RedisError
 
 from app.core.config import settings
 
@@ -11,8 +10,12 @@ redis_client = Redis.from_url(
 )
 
 
+class RedisNotReadyError(RuntimeError):
+    pass
+
+
 def check_redis() -> None:
     try:
         redis_client.ping()
-    except RedisError as exc:
-        raise ConnectionError("Redis is not ready") from exc
+    except Exception as exc:
+        raise RedisNotReadyError("Redis is not ready") from exc

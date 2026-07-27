@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.cache import check_redis
+from app.cache import RedisNotReadyError, check_redis
 from app.core.exceptions import service_unavailable
 from app.database import SessionLocal
 
@@ -24,7 +24,7 @@ def readiness_check() -> dict[str, str]:
 
     try:
         check_redis()
-    except ConnectionError as exc:
+    except RedisNotReadyError as exc:
         raise service_unavailable("Redis is not ready") from exc
 
     return {"status": "ready"}

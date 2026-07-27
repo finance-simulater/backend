@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1 import models  # noqa: F401
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.loan.router import router as loan_router
+from app.api.v1.simulation.router import router as simulation_router
 from app.api.v1.user.router import router as user_router
 from app.core.exceptions import AppHTTPException
 from app.health.router import router as health_router
@@ -15,6 +16,7 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(loan_router)
+app.include_router(simulation_router)
 
 # FastAPI 기본 HTTPException엔 `code`가 없다. AppHTTPException을 못 쓴 곳(또는 아직 안 고친 곳)에서도
 # 응답 형식이 깨지지 않도록, status 코드만 보고 채워 넣을 기본값. api/domains/errors.md "공통" 표와 맞춘다.

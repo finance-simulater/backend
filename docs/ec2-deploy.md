@@ -58,7 +58,7 @@ http://api.<your-domain>/docs
 
 ```text
 GET /health        # 앱 프로세스 생존 확인
-GET /health/ready  # DB 연결까지 확인
+GET /health/ready  # DB와 Redis 연결까지 확인
 ```
 
 ## 5. HTTPS 설정

@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -495,7 +495,7 @@ data "aws_iam_policy_document" "web_ses_send" {
     resources = [aws_sesv2_email_identity.sender_domain[0].arn]
 
     condition {
-      test     = "StringEquals"
+      test     = "StringEqualsIgnoreCase"
       variable = "ses:FromAddress"
       values   = [var.ses_from_address]
     }

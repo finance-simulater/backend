@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.core.email import EmailDeliveryError, EmailSender
 from app.core.exceptions import (
     bad_request,
-    conflict,
     service_unavailable,
     too_many_requests,
 )
@@ -49,8 +48,6 @@ class EmailVerificationService:
 
     def send(self, email: str) -> None:
         normalized_email = email.lower()
-        if self.user_repository.find_by_email(normalized_email) is not None:
-            raise conflict("Email already exists", "EMAIL_ALREADY_EXISTS")
 
         try:
             reserved = self.verification_repository.reserve_send(
@@ -62,6 +59,9 @@ class EmailVerificationService:
                     "Please wait before requesting another verification email",
                     "VERIFICATION_EMAIL_RATE_LIMITED",
                 )
+
+            if self.user_repository.find_by_email(normalized_email) is not None:
+                return
 
             code = create_email_verification_code()
             self.verification_repository.save(
@@ -86,15 +86,14 @@ class EmailVerificationService:
 
     def verify(self, request: EmailVerificationRequest) -> EmailVerificationResult:
         email = str(request.email).lower()
-        if self.user_repository.find_by_email(email) is not None:
-            raise conflict("Email already exists", "EMAIL_ALREADY_EXISTS")
+        user_exists = self.user_repository.find_by_email(email) is not None
 
         try:
             record = self.verification_repository.find(email)
         except VerificationStoreError as exc:
             raise service_unavailable("Email verification service is not ready") from exc
 
-        if record is None:
+        if user_exists or record is None:
             raise self._invalid_code()
         if record.attempts >= settings.email_verification_max_attempts:
             raise self._attempts_exceeded()

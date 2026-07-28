@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import jwt
 import pytest
@@ -86,17 +86,21 @@ def test_signup_does_not_create_user_when_verification_ticket_is_invalid() -> No
         )
 
     assert exc_info.value.code == "EMAIL_VERIFICATION_REQUIRED"
+    user_repository.find_by_email.assert_not_called()
+    user_repository.find_by_nickname.assert_not_called()
     user_repository.create.assert_not_called()
     verification_service.consume_ticket.assert_not_called()
 
 
 def test_signup_rejects_duplicate_email() -> None:
     user_repository = MagicMock(spec=UserRepository)
+    verification_service = MagicMock(spec=EmailVerificationService)
     user_repository.find_by_email.return_value = make_user()
     service = AuthService(
         db=MagicMock(),
         user_repository=user_repository,
         refresh_token_repository=MagicMock(spec=RefreshTokenRepository),
+        email_verification_service=verification_service,
     )
 
     with pytest.raises(AppHTTPException) as exc_info:
@@ -114,6 +118,7 @@ def test_signup_rejects_duplicate_email() -> None:
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.code == "EMAIL_ALREADY_EXISTS"
+    verification_service.assert_valid_ticket.assert_called_once()
 
 
 def test_login_rejects_invalid_password() -> None:
@@ -130,6 +135,32 @@ def test_login_rejects_invalid_password() -> None:
 
     assert exc_info.value.status_code == 401
     assert exc_info.value.code == "INVALID_CREDENTIALS"
+
+
+def test_login_unknown_email_runs_dummy_password_verification() -> None:
+    user_repository = MagicMock(spec=UserRepository)
+    user_repository.find_by_email.return_value = None
+    service = AuthService(
+        db=MagicMock(),
+        user_repository=user_repository,
+        refresh_token_repository=MagicMock(spec=RefreshTokenRepository),
+    )
+
+    with patch(
+        "app.api.v1.auth.service.verify_password",
+        return_value=False,
+    ) as verify:
+        with pytest.raises(AppHTTPException) as exc_info:
+            service.login(
+                LoginRequest(
+                    email="missing@example.com",
+                    password="wrong-password",
+                )
+            )
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.code == "INVALID_CREDENTIALS"
+    verify.assert_called_once()
 
 
 def test_login_rejects_unverified_email() -> None:

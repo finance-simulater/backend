@@ -12,6 +12,12 @@ from app.core.config import settings
 
 password_hash = PasswordHash.recommended()
 
+# Keeps unknown-user logins on the same Argon2 verification path.
+DUMMY_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$"
+    "pW0ePDyy+8QZcN2cRHm5Uw$emOLDs+siXeNeWRATfJb7u2jZhly3mgs2IbQ6drHhcc"
+)
+
 
 class InvalidAccessTokenError(ValueError):
     pass

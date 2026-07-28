@@ -33,6 +33,7 @@ from app.core.exceptions import (
     unauthorized,
 )
 from app.core.security import (
+    DUMMY_PASSWORD_HASH,
     create_access_token,
     create_refresh_token,
     hash_password,
@@ -70,14 +71,14 @@ class AuthService:
 
     def signup(self, signup_request: SignupRequest) -> AuthResult:
         email = str(signup_request.email).lower()
-        if self.user_repository.find_by_email(email) is not None:
-            raise conflict("Email already exists", "EMAIL_ALREADY_EXISTS")
-        if self.user_repository.find_by_nickname(signup_request.nickname) is not None:
-            raise conflict("Nickname already exists", "NICKNAME_ALREADY_EXISTS")
         self.email_verification_service.assert_valid_ticket(
             email,
             signup_request.email_verification_token,
         )
+        if self.user_repository.find_by_email(email) is not None:
+            raise conflict("Email already exists", "EMAIL_ALREADY_EXISTS")
+        if self.user_repository.find_by_nickname(signup_request.nickname) is not None:
+            raise conflict("Nickname already exists", "NICKNAME_ALREADY_EXISTS")
 
         user_create = UserCreate(
             email=email,
@@ -106,11 +107,22 @@ class AuthService:
 
     def login(self, login_request: LoginRequest) -> AuthResult:
         user = self.user_repository.find_by_email(str(login_request.email).lower())
+        candidate_hash = (
+            user.password
+            if user is not None
+            and user.provider == "local"
+            and user.password is not None
+            else DUMMY_PASSWORD_HASH
+        )
+        password_matches = verify_password(
+            login_request.password,
+            candidate_hash,
+        )
         if (
             user is None
             or user.provider != "local"
             or user.password is None
-            or not verify_password(login_request.password, user.password)
+            or not password_matches
         ):
             raise unauthorized("Invalid email or password", "INVALID_CREDENTIALS")
         if not user.is_email_verified:

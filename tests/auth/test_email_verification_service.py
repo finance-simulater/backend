@@ -34,6 +34,25 @@ def test_send_email_verification_saves_code_and_sends_email() -> None:
     assert len(sent_code) == 6
 
 
+def test_send_existing_email_returns_without_revealing_registration() -> None:
+    user_repository = MagicMock(spec=UserRepository)
+    verification_repository = MagicMock(spec=EmailVerificationRepository)
+    email_sender = MagicMock(spec=EmailSender)
+    user_repository.find_by_email.return_value = object()
+    verification_repository.reserve_send.return_value = True
+    service = EmailVerificationService(
+        user_repository=user_repository,
+        verification_repository=verification_repository,
+        email_sender=email_sender,
+    )
+
+    service.send("user@example.com")
+
+    verification_repository.reserve_send.assert_called_once()
+    verification_repository.save.assert_not_called()
+    email_sender.send_verification_code.assert_not_called()
+
+
 def test_send_rate_limit_rejects_request_without_sending() -> None:
     user_repository = MagicMock(spec=UserRepository)
     verification_repository = MagicMock(spec=EmailVerificationRepository)
@@ -111,6 +130,30 @@ def test_verify_email_issues_ticket_without_creating_user() -> None:
     )
     user_repository.create.assert_not_called()
     assert len(result.token) >= 32
+
+
+def test_verify_existing_email_returns_generic_invalid_code() -> None:
+    email = "user@example.com"
+    code = "123456"
+    user_repository = MagicMock(spec=UserRepository)
+    verification_repository = MagicMock(spec=EmailVerificationRepository)
+    user_repository.find_by_email.return_value = object()
+    verification_repository.find.return_value = EmailVerificationRecord(
+        code_hash=hash_email_verification_code(email, code),
+        attempts=0,
+    )
+    service = EmailVerificationService(
+        user_repository=user_repository,
+        verification_repository=verification_repository,
+        email_sender=MagicMock(spec=EmailSender),
+    )
+
+    with pytest.raises(AppHTTPException) as exc_info:
+        service.verify(EmailVerificationRequest(email=email, code=code))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "INVALID_VERIFICATION_CODE"
+    verification_repository.save_ticket.assert_not_called()
 
 
 def test_verify_email_increments_attempts_for_wrong_code() -> None:

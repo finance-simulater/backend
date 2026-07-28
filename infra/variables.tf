@@ -134,10 +134,14 @@ variable "ses_from_address" {
 
   validation {
     condition = (
-      var.ses_domain_name == "" ||
-      endswith(var.ses_from_address, "@${var.ses_domain_name}")
+      (var.ses_domain_name == "" && var.ses_from_address == "") ||
+      (
+        var.ses_domain_name != "" &&
+        var.ses_from_address != "" &&
+        endswith(lower(var.ses_from_address), "@${lower(var.ses_domain_name)}")
+      )
     )
-    error_message = "ses_from_address must belong to ses_domain_name."
+    error_message = "ses_domain_name and ses_from_address must either both be empty or both be set, and ses_from_address must belong to ses_domain_name."
   }
 }
 

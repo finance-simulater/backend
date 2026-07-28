@@ -15,7 +15,7 @@ jobs:
     env:
       DATABASE_URL: sqlite:///./test.db
       REDIS_URL: redis://localhost:6379
-      SECRET_KEY: test-secret-key
+      SECRET_KEY: test-secret-key-that-is-at-least-32-bytes
       DEBUG: "True"
 
     steps:
@@ -30,10 +30,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .
+          pip install . pytest httpx2
 
       - name: Compile check
         run: python -m compileall app alembic
+
+      - name: Run tests
+        run: pytest -q
 
   deploy:
     name: Deploy

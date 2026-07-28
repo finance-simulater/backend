@@ -22,6 +22,8 @@ frontend_acm_certificate_arn  = ""
 
 upload_bucket_name          = ""
 upload_bucket_force_destroy = false
+ses_domain_name             = "fsimulation.store"
+ses_from_address            = "no-reply@fsimulation.store"
 upload_allowed_origins = [
   "http://localhost:3000",
   "http://localhost:5173",

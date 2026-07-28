@@ -121,6 +121,26 @@ variable "upload_bucket_force_destroy" {
   default     = false
 }
 
+variable "ses_domain_name" {
+  description = "Optional SES domain identity used to send authentication emails."
+  type        = string
+  default     = ""
+}
+
+variable "ses_from_address" {
+  description = "Sender address allowed for the EC2 application."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.ses_domain_name == "" ||
+      endswith(var.ses_from_address, "@${var.ses_domain_name}")
+    )
+    error_message = "ses_from_address must belong to ses_domain_name."
+  }
+}
+
 variable "upload_allowed_origins" {
   description = "Browser origins allowed to upload directly to the upload S3 bucket with presigned URLs."
   type        = list(string)

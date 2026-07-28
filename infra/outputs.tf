@@ -52,3 +52,20 @@ output "upload_bucket_name" {
   description = "S3 bucket for user-uploaded files"
   value       = aws_s3_bucket.uploads.bucket
 }
+
+output "ses_identity_arn" {
+  description = "SES domain identity ARN"
+  value = (
+    var.ses_domain_name == ""
+    ? null
+    : aws_sesv2_email_identity.sender_domain[0].arn
+  )
+}
+
+output "ses_dkim_records" {
+  description = "CNAME records to add to the DNS provider for SES Easy DKIM"
+  value = var.ses_domain_name == "" ? {} : {
+    for token in aws_sesv2_email_identity.sender_domain[0].dkim_signing_attributes[0].tokens :
+    "${token}._domainkey.${var.ses_domain_name}" => "${token}.dkim.amazonses.com"
+  }
+}

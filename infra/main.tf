@@ -473,3 +473,38 @@ resource "aws_iam_role_policy" "web_uploads_s3" {
   role   = aws_iam_role.web.id
   policy = data.aws_iam_policy_document.web_uploads_s3.json
 }
+
+resource "aws_sesv2_email_identity" "sender_domain" {
+  count = var.ses_domain_name == "" ? 0 : 1
+
+  email_identity = var.ses_domain_name
+
+  tags = {
+    Name    = "${var.project_name}-email-domain"
+    Project = var.project_name
+  }
+}
+
+data "aws_iam_policy_document" "web_ses_send" {
+  count = var.ses_domain_name == "" ? 0 : 1
+
+  statement {
+    sid       = "AllowVerificationEmailSend"
+    actions   = ["ses:SendEmail"]
+    resources = [aws_sesv2_email_identity.sender_domain[0].arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "ses:FromAddress"
+      values   = [var.ses_from_address]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "web_ses_send" {
+  count = var.ses_domain_name == "" ? 0 : 1
+
+  name   = "${var.project_name}-ses-send"
+  role   = aws_iam_role.web.id
+  policy = data.aws_iam_policy_document.web_ses_send[0].json
+}

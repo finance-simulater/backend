@@ -1,19 +1,27 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1 import models  # noqa: F401
 from app.api.v1.auth.router import router as auth_router
 from app.api.v1.loan.router import router as loan_router
-from app.api.v1.user.router import router as user_router
 from app.core.exceptions import AppHTTPException
+from app.core.config import settings
 from app.health.router import router as health_router
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(health_router)
 app.include_router(auth_router)
-app.include_router(user_router)
 app.include_router(loan_router)
 
 # FastAPI 기본 HTTPException엔 `code`가 없다. AppHTTPException을 못 쓴 곳(또는 아직 안 고친 곳)에서도
@@ -24,6 +32,7 @@ _DEFAULT_CODE_BY_STATUS = {
     403: "FORBIDDEN",
     404: "NOT_FOUND",
     409: "CONFLICT",
+    429: "TOO_MANY_REQUESTS",
     422: "INVALID_REQUEST",
     500: "INTERNAL_ERROR",
     503: "SERVICE_UNAVAILABLE",

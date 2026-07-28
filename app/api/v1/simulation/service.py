@@ -3,7 +3,11 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.api.v1.credit.model import CreditHistory
-from app.api.v1.credit.repository import CreditGradePolicyRepository, CreditHistoryRepository
+from app.api.v1.credit.repository import (
+    CreditGradePolicyRepository,
+    CreditHistoryRepository,
+    get_grade_policy_or_404,
+)
 from app.api.v1.expense.model import Expense
 from app.api.v1.expense.repository import ExpenseRepository
 from app.api.v1.fixed_expense.repository import FixedExpenseRepository
@@ -66,7 +70,7 @@ class SimulationService:
         state = self._get_state(user_id)
         stock_value_total = self._stock_value_total(user_id)
         total_asset = state.cash_balance + stock_value_total
-        grade_policy = self.credit_repository.find_by_score(state.credit_score)
+        grade_policy = get_grade_policy_or_404(self.credit_repository, state.credit_score)
         return SimulationStateResponse(
             current_turn=state.current_turn,
             current_year=state.current_year,
@@ -75,7 +79,7 @@ class SimulationService:
             total_asset=total_asset,
             stock_ratio=(stock_value_total / total_asset) if total_asset else 0.0,
             credit_score=state.credit_score,
-            credit_grade=grade_policy.grade if grade_policy else None,
+            credit_grade=grade_policy.grade,
             consume_score=state.consume_score,
             has_active_loan=self.loan_repository.find_active_by_user(user_id) is not None,
             status=state.status,

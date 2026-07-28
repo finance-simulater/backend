@@ -16,7 +16,7 @@ class SimulationStateResponse(BaseModel):
     total_asset: int
     stock_ratio: float
     credit_score: int
-    credit_grade: str | None
+    credit_grade: str
     consume_score: int
     has_active_loan: bool
     status: Literal["active", "completed"]

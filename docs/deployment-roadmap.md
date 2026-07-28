@@ -13,8 +13,8 @@
 ## 전체 방향
 
 로컬에서는 Docker Compose로 MySQL과 Redis를 띄워 개발한다.
-운영에서는 EC2에 FastAPI와 Nginx를 컨테이너로 올리고, DB는 RDS MySQL로 분리한다.
-Redis는 초반에는 EC2/Docker Redis 또는 로컬 Redis로 검증하고, 운영 단계에서는 ElastiCache Redis로 분리한다.
+운영에서는 EC2에 FastAPI, Nginx, Redis를 컨테이너로 올리고, DB는 RDS MySQL로 분리한다.
+Redis는 초반 운영 단계에서는 EC2 Docker Redis를 사용하고, 트래픽/가용성 요구가 커지면 ElastiCache Redis로 분리한다.
 AWS 리소스는 처음에는 콘솔로 흐름을 확인하고, 최종적으로 Terraform 코드로 재현 가능하게 관리한다.
 
 ## 진행 순서
@@ -49,7 +49,7 @@ AWS 리소스는 처음에는 콘솔로 흐름을 확인하고, 최종적으로 
 6. Terraform 인프라 코드 작성
    - `infra/main.tf`, `infra/variables.tf`, `infra/outputs.tf`, `infra/terraform.tfvars.example`을 작성한다.
    - EC2, 보안그룹, Elastic IP부터 코드화한다.
-   - RDS와 Redis는 이후 단계에서 추가한다.
+   - RDS는 Terraform으로 관리하고, Redis는 비용을 줄이기 위해 우선 EC2 Docker Compose로 관리한다.
    - `terraform.tfvars`, `terraform.tfstate`, `.pem`은 절대 Git에 올리지 않는다.
 
 7. RDS MySQL 연결
@@ -59,15 +59,15 @@ AWS 리소스는 처음에는 콘솔로 흐름을 확인하고, 최종적으로 
    - Alembic으로 RDS에 마이그레이션을 적용한다.
 
 8. Redis 운영 구성
-   - 초반에는 Docker Redis로 검증한다.
-   - 운영 전환 시 ElastiCache Redis를 Terraform으로 생성한다.
-   - FastAPI의 `REDIS_URL`만 교체해서 코드 변경 없이 연결한다.
+   - 초반 운영 단계에서는 Docker Redis로 검증한다.
+   - FastAPI의 `REDIS_URL`은 운영에서 `redis://redis:6379`를 사용한다.
+   - 운영 전환이 필요해지면 ElastiCache Redis를 Terraform으로 생성하고 `REDIS_URL`만 교체한다.
 
 9. GitHub Actions 배포
    - push 시 테스트를 실행한다.
    - 테스트 성공 후 EC2 self-hosted runner에서 배포를 수행한다.
    - repository 파일 동기화 후 `docker compose -f docker-compose.prod.yml up -d --build`를 실행한다.
-   - 현재 1차 자동 배포는 Docker Compose 재빌드와 `/docs` 헬스체크까지 수행한다.
+   - 현재 자동 배포는 Docker Compose 재빌드와 `/health/ready` 헬스체크까지 수행한다.
 
 10. 도메인 최종 연결
     - Cloudflare DNS에서 `api.example.com`을 EC2 Elastic IP로 연결한다.

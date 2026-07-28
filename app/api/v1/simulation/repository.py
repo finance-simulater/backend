@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.api.v1.simulation.model import SimulationState, Turn
+from app.core.exceptions import not_found
 
 
 class SimulationStateRepository:
@@ -15,6 +16,13 @@ class SimulationStateRepository:
         self.db.commit()
         self.db.refresh(state)
         return state
+
+
+def get_simulation_state_or_404(repository: SimulationStateRepository, user_id: int) -> SimulationState:
+    state = repository.find_by_user(user_id)
+    if state is None:
+        raise not_found("시뮬레이션 정보를 찾을 수 없습니다")
+    return state
 
 
 class TurnRepository:

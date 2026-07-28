@@ -8,16 +8,22 @@ from app.api.v1.credit.repository import (
     CreditHistoryRepository,
     get_grade_policy_or_404,
 )
+from app.api.v1.credit.schema import CreditHistoryReason
 from app.api.v1.expense.model import Expense
 from app.api.v1.expense.repository import ExpenseRepository
 from app.api.v1.fixed_expense.repository import FixedExpenseRepository
 from app.api.v1.loan.repository import LoanRepository
-from app.api.v1.simulation.model import SimulationState, Turn
-from app.api.v1.simulation.repository import SimulationStateRepository, TurnRepository
+from app.api.v1.simulation.model import Turn
+from app.api.v1.simulation.repository import (
+    SimulationStateRepository,
+    TurnRepository,
+    get_simulation_state_or_404,
+)
 from app.api.v1.simulation.schema import ConsumeLevel, SimulationStateResponse, TurnChoiceRequest
 from app.api.v1.stock.repository import StockHoldingRepository
 from app.api.v1.user.repository import UserRepository
 from app.core.exceptions import conflict, not_found
+from app.core.scoring import clamp_score
 
 # 소비체크 수준별 지출액 = 월급 대비 % (카테고리 3개 각각 독립 적용)
 CONSUME_LEVEL_EXPENSE_RATIO: dict[ConsumeLevel, int] = {
@@ -67,8 +73,8 @@ class SimulationService:
         self.stock_repository = stock_repository or StockHoldingRepository(db)
 
     def get_state(self, user_id: int) -> SimulationStateResponse:
-        state = self._get_state(user_id)
-        stock_value_total = self._stock_value_total(user_id)
+        state = get_simulation_state_or_404(self.state_repository, user_id)
+        stock_value_total = self.stock_repository.sum_current_value_by_user(user_id)
         total_asset = state.cash_balance + stock_value_total
         grade_policy = get_grade_policy_or_404(self.credit_repository, state.credit_score)
         return SimulationStateResponse(
@@ -86,7 +92,7 @@ class SimulationService:
         )
 
     def list_turns(self, user_id: int, cursor: int | None, size: int) -> list[Turn]:
-        self._get_state(user_id)
+        get_simulation_state_or_404(self.state_repository, user_id)
         return self.turn_repository.find_by_user_paginated(user_id, cursor, size)
 
     def get_turn(self, user_id: int, turn_number: int) -> Turn:
@@ -96,7 +102,7 @@ class SimulationService:
         return turn
 
     def advance_turn(self, user_id: int, choice: TurnChoiceRequest) -> Turn:
-        state = self._get_state(user_id)
+        state = get_simulation_state_or_404(self.state_repository, user_id)
         if state.status != "active":
             raise conflict("이미 완료된 시뮬레이션입니다", code="SIMULATION_ALREADY_COMPLETED")
 
@@ -144,7 +150,7 @@ class SimulationService:
         if new_expenses:
             self.expense_repository.create_many(new_expenses)
 
-        consume_score = self._clamp(state.consume_score + consume_score_delta)
+        consume_score = clamp_score(state.consume_score + consume_score_delta)
 
         cash_balance = state.cash_balance + salary_received - fixed_expense_total - variable_expense_total
 
@@ -162,45 +168,22 @@ class SimulationService:
                     installment.paid_at_turn = turn_number
                     loan.remaining_balance -= installment.amount
 
-                    credit_score = self._clamp(credit_score + 1)
-                    self.credit_history_repository.create(
-                        CreditHistory(
-                            user_id=user_id,
-                            turn_number=turn_number,
-                            delta=1,
-                            reason="loan_payment",
-                            score_after=credit_score,
-                        )
-                    )
+                    credit_score = clamp_score(credit_score + 1)
+                    self._record_credit_history(user_id, turn_number, 1, "loan_payment", credit_score)
+
                     if installment.installment_number == loan.duration_months:
                         loan.status = "completed"
-                        credit_score = self._clamp(credit_score + 3)
-                        self.credit_history_repository.create(
-                            CreditHistory(
-                                user_id=user_id,
-                                turn_number=turn_number,
-                                delta=3,
-                                reason="loan_complete",
-                                score_after=credit_score,
-                            )
-                        )
+                        credit_score = clamp_score(credit_score + 3)
+                        self._record_credit_history(user_id, turn_number, 3, "loan_complete", credit_score)
                 else:
                     installment.status = "overdue"
                     is_overdue = True
-                    credit_score = self._clamp(credit_score - 4)
-                    self.credit_history_repository.create(
-                        CreditHistory(
-                            user_id=user_id,
-                            turn_number=turn_number,
-                            delta=-4,
-                            reason="overdue",
-                            score_after=credit_score,
-                        )
-                    )
+                    credit_score = clamp_score(credit_score - 4)
+                    self._record_credit_history(user_id, turn_number, -4, "overdue", credit_score)
                 self.loan_repository.save_repayment(loan, installment)
 
         credit_score_delta = credit_score - state.credit_score
-        total_asset_after = cash_balance + self._stock_value_total(user_id)
+        total_asset_after = cash_balance + self.stock_repository.sum_current_value_by_user(user_id)
 
         next_month, next_year = (month + 1, year) if month < 12 else (1, year + 1)
 
@@ -235,15 +218,15 @@ class SimulationService:
 
         return turn
 
-    def _get_state(self, user_id: int) -> SimulationState:
-        state = self.state_repository.find_by_user(user_id)
-        if state is None:
-            raise not_found("시뮬레이션 정보를 찾을 수 없습니다")
-        return state
-
-    def _stock_value_total(self, user_id: int) -> int:
-        return sum(holding.current_value for holding in self.stock_repository.find_all_by_user(user_id))
-
-    @staticmethod
-    def _clamp(score: int) -> int:
-        return max(0, min(100, score))
+    def _record_credit_history(
+        self, user_id: int, turn_number: int, delta: int, reason: CreditHistoryReason, score_after: int
+    ) -> None:
+        self.credit_history_repository.create(
+            CreditHistory(
+                user_id=user_id,
+                turn_number=turn_number,
+                delta=delta,
+                reason=reason,
+                score_after=score_after,
+            )
+        )

@@ -169,6 +169,26 @@ def test_advance_turn_overdue_when_balance_insufficient() -> None:
     assert state.credit_score == 46
 
 
+def test_advance_turn_rejects_when_expenses_exceed_balance() -> None:
+    state = make_state(cash_balance=0, consume_score=50)
+    user = User(id=1, monthly_salary=100_000)
+    fixed_expenses = [FixedExpense(name="월세", amount=90_000)]
+    service = make_service(state, user, fixed_expenses=fixed_expenses)
+
+    with pytest.raises(AppHTTPException) as exc_info:
+        service.advance_turn(
+            1, TurnChoiceRequest(food_choice="much", shopping_choice="much", leisure_choice="much")
+        )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.code == "INSUFFICIENT_BALANCE"
+    # 잔액 초과 시 상태/지출이 변경되지 않아야 함
+    assert state.current_turn == 1
+    assert state.consume_score == 50
+    service.expense_repository.create_many.assert_not_called()
+    service.turn_repository.create.assert_not_called()
+
+
 def test_advance_turn_rejects_completed_simulation() -> None:
     state = make_state(status="completed")
     user = User(id=1, monthly_salary=2_000_000)

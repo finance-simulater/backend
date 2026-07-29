@@ -13,7 +13,7 @@ from app.api.v1.expense.model import Expense
 from app.api.v1.expense.repository import ExpenseRepository
 from app.api.v1.fixed_expense.repository import FixedExpenseRepository
 from app.api.v1.loan.repository import LoanRepository
-from app.api.v1.simulation.model import Turn
+from app.api.v1.simulation.model import SimulationState, Turn
 from app.api.v1.simulation.repository import (
     SimulationStateRepository,
     TurnRepository,
@@ -22,7 +22,7 @@ from app.api.v1.simulation.repository import (
 from app.api.v1.simulation.schema import ConsumeLevel, SimulationStateResponse, TurnChoiceRequest
 from app.api.v1.stock.repository import StockHoldingRepository
 from app.api.v1.user.repository import UserRepository
-from app.core.exceptions import conflict, not_found
+from app.core.exceptions import conflict, not_found, unprocessable
 from app.core.scoring import clamp_score
 
 # 소비체크 수준별 지출액 = 월급 대비 % (카테고리 3개 각각 독립 적용)
@@ -62,6 +62,7 @@ class SimulationService:
         credit_history_repository: CreditHistoryRepository | None = None,
         stock_repository: StockHoldingRepository | None = None,
     ) -> None:
+        self.db = db
         self.state_repository = state_repository or SimulationStateRepository(db)
         self.turn_repository = turn_repository or TurnRepository(db)
         self.user_repository = user_repository or UserRepository(db)
@@ -96,13 +97,24 @@ class SimulationService:
         return self.turn_repository.find_by_user_paginated(user_id, cursor, size)
 
     def get_turn(self, user_id: int, turn_number: int) -> Turn:
+        get_simulation_state_or_404(self.state_repository, user_id)
         turn = self.turn_repository.find_by_user_and_turn(user_id, turn_number)
         if turn is None:
             raise not_found("해당 턴을 찾을 수 없습니다", code="TURN_NOT_FOUND")
         return turn
 
     def advance_turn(self, user_id: int, choice: TurnChoiceRequest) -> Turn:
-        state = get_simulation_state_or_404(self.state_repository, user_id)
+        # user_id 행을 잠그고 시작해 동시 요청으로 인한 lost-update(급여 이중 지급 등)를 방지
+        state = get_simulation_state_or_404(self.state_repository, user_id, for_update=True)
+        try:
+            turn = self._advance_turn_locked(state, user_id, choice)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return turn
+
+    def _advance_turn_locked(self, state: SimulationState, user_id: int, choice: TurnChoiceRequest) -> Turn:
         if state.status != "active":
             raise conflict("이미 완료된 시뮬레이션입니다", code="SIMULATION_ALREADY_COMPLETED")
 
@@ -147,12 +159,17 @@ class SimulationService:
                     expense_date=expense_date,
                 )
             )
+        cash_balance = state.cash_balance + salary_received - fixed_expense_total - variable_expense_total
+        if cash_balance < 0:
+            raise unprocessable(
+                "이번 달 지출이 소득과 잔액을 초과합니다. 소비 수준을 낮춰 다시 시도해주세요",
+                code="INSUFFICIENT_BALANCE",
+            )
+
         if new_expenses:
             self.expense_repository.create_many(new_expenses)
 
         consume_score = clamp_score(state.consume_score + consume_score_delta)
-
-        cash_balance = state.cash_balance + salary_received - fixed_expense_total - variable_expense_total
 
         loan_repayment_amount = 0
         is_overdue = False
@@ -182,6 +199,7 @@ class SimulationService:
                     self._record_credit_history(user_id, turn_number, -4, "overdue", credit_score)
                 self.loan_repository.save_repayment(loan, installment)
 
+        consume_score_delta = consume_score - state.consume_score
         credit_score_delta = credit_score - state.credit_score
         total_asset_after = cash_balance + self.stock_repository.sum_current_value_by_user(user_id)
 

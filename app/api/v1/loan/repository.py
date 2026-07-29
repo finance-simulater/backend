@@ -42,8 +42,7 @@ class LoanRepository:
     def save_repayment(self, loan: Loan, installment: RepaymentSchedule) -> Loan:
         self.db.add(loan)
         self.db.add(installment)
-        self.db.commit()
-        self.db.refresh(loan)
+        self.db.flush()
         return loan
 
     def create_with_schedule(self, loan: Loan, schedule: list[RepaymentSchedule]) -> Loan:

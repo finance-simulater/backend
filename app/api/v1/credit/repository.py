@@ -32,6 +32,5 @@ class CreditHistoryRepository:
 
     def create(self, credit_history: CreditHistory) -> CreditHistory:
         self.db.add(credit_history)
-        self.db.commit()
-        self.db.refresh(credit_history)
+        self.db.flush()
         return credit_history

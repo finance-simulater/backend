@@ -21,7 +21,7 @@ async def get_dashboard(user_id: int, service: SimulationService = Depends(get_s
 async def list_turns(
     user_id: int,
     cursor: int | None = Query(None),
-    size: int = Query(20, gt=0),
+    size: int = Query(20, gt=0, le=100),
     service: SimulationService = Depends(get_simulation_service),
 ):
     return service.list_turns(user_id, cursor, size)

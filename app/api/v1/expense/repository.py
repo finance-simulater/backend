@@ -9,7 +9,5 @@ class ExpenseRepository:
 
     def create_many(self, expenses: list[Expense]) -> list[Expense]:
         self.db.add_all(expenses)
-        self.db.commit()
-        for expense in expenses:
-            self.db.refresh(expense)
+        self.db.flush()
         return expenses

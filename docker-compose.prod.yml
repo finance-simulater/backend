@@ -5,6 +5,9 @@ services:
     restart: always
     env_file:
       - .env.prod
+    depends_on:
+      redis:
+        condition: service_healthy
     expose:
       - "8000"
     healthcheck:
@@ -13,6 +16,22 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: finance-redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   nginx:
     image: nginx:1.27-alpine
@@ -36,3 +55,6 @@ services:
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt
       - /var/www/certbot:/var/www/certbot
+
+volumes:
+  redis_data:

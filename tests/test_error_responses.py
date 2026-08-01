@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.v1.user.repository import UserRepository
 from app.api.v1.user.router import get_user_service
 from app.api.v1.user.service import UserService
+from app.cache import RedisNotReadyError
 from app.main import app
 
 
@@ -30,6 +31,34 @@ def test_health_ready_failure_returns_service_unavailable_code(client: TestClien
 
     assert response.status_code == 503
     assert response.json() == {"code": "SERVICE_UNAVAILABLE", "detail": "Database is not ready"}
+
+
+def test_health_ready_success_returns_ready(client: TestClient) -> None:
+    with (
+        patch("app.health.router.SessionLocal") as session_local,
+        patch("app.health.router.check_redis"),
+    ):
+        db = session_local.return_value.__enter__.return_value
+        db.execute.return_value = None
+
+        response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+
+
+def test_health_ready_redis_failure_returns_service_unavailable_code(client: TestClient) -> None:
+    with (
+        patch("app.health.router.SessionLocal") as session_local,
+        patch("app.health.router.check_redis", side_effect=RedisNotReadyError("redis down")),
+    ):
+        db = session_local.return_value.__enter__.return_value
+        db.execute.return_value = None
+
+        response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"code": "SERVICE_UNAVAILABLE", "detail": "Redis is not ready"}
 
 
 def test_user_not_found_returns_not_found_code(client: TestClient) -> None:

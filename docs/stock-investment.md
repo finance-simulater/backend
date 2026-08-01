@@ -9,9 +9,9 @@
 
 | 메서드 | 경로 | 설명 | 상태 |
 |---|---|---|---|
-| `GET` | `/api/v1/stocks` | 보유 주식 현황 + 투자 가능 현금 조회 | ✅ 완료 |
-| `POST` | `/api/v1/stocks/buy` | 주식 매수 | ✅ 완료 |
-| `POST` | `/api/v1/stocks/sell` | 주식 매도 (부분·전체) | ✅ 완료 |
+| `GET` | `/api/v1/stocks/users/{user_id}` | 보유 주식 현황 + 투자 가능 현금 조회 | ✅ 완료 |
+| `POST` | `/api/v1/stocks/users/{user_id}/buy` | 주식 매수 | ✅ 완료 |
+| `POST` | `/api/v1/stocks/users/{user_id}/sell` | 주식 매도 (부분·전체) | ✅ 완료 |
 | 내부 함수 | `StockService.apply_monthly_simulation()` | 턴 처리 시 몬테카를로 시가 갱신 | ⬜ 미구현 (턴 처리 파트 연동 시 추가) |
 
 ---
@@ -64,7 +64,7 @@ app/api/v1/stock/
 
 ## 코드 흐름
 
-### GET /api/v1/stocks
+### GET /api/v1/stocks/users/{user_id}
 
 ```
 router.get_portfolio(user_id)
@@ -77,7 +77,7 @@ router.get_portfolio(user_id)
   ← StockPortfolioResponse 반환
 ```
 
-### POST /api/v1/stocks/buy
+### POST /api/v1/stocks/users/{user_id}/buy
 
 ```
 router.buy_stock(user_id, StockBuyRequest)
@@ -92,7 +92,7 @@ router.buy_stock(user_id, StockBuyRequest)
   ← StockActionResponse 반환
 ```
 
-### POST /api/v1/stocks/sell
+### POST /api/v1/stocks/users/{user_id}/sell
 
 ```
 router.sell_stock(user_id, StockSellRequest)
@@ -129,12 +129,11 @@ router.sell_stock(user_id, StockSellRequest)
 
 ### JWT 인증 (손기훈 파트 완성 후 교체)
 
-현재 `user_id`를 쿼리 파라미터(`?user_id=1`)로 받음. JWT 완성 후:
+현재 `user_id`를 path 파라미터(`/users/{user_id}`)로 받음 (loans 도메인과 동일 방식). JWT 완성 후:
 
 ```python
-# router.py 각 엔드포인트에서
-user_id: int  # 이 줄을 아래로 교체
-user: User = Depends(get_current_user)  # JWT에서 user 추출
+# router.py 각 엔드포인트에서 path의 user_id를 제거하고 인증에서 추출
+user: User = Depends(get_current_user)  # 쿠키/JWT에서 user 추출
 ```
 
 ### 턴 처리 (김여진 파트 연동)
@@ -184,20 +183,20 @@ open http://localhost:8000/docs
 
 ```bash
 # 보유 현황 조회 (초기: 빈 배열)
-curl "http://localhost:8000/api/v1/stocks?user_id=1"
+curl "http://localhost:8000/api/v1/stocks/users/1"
 
 # 고변동성 주식 30만원 매수
-curl -X POST "http://localhost:8000/api/v1/stocks/buy?user_id=1" \
+curl -X POST "http://localhost:8000/api/v1/stocks/users/1/buy" \
   -H "Content-Type: application/json" \
   -d '{"stock_type": "high_vol", "amount": 300000}'
 
 # 부분 매도 (10만원)
-curl -X POST "http://localhost:8000/api/v1/stocks/sell?user_id=1" \
+curl -X POST "http://localhost:8000/api/v1/stocks/users/1/sell" \
   -H "Content-Type: application/json" \
   -d '{"stock_type": "high_vol", "amount": 100000}'
 
 # 잔액 부족 에러 확인 (현금보다 많이 매수)
-curl -X POST "http://localhost:8000/api/v1/stocks/buy?user_id=1" \
+curl -X POST "http://localhost:8000/api/v1/stocks/users/1/buy" \
   -H "Content-Type: application/json" \
   -d '{"stock_type": "index", "amount": 9999999}'
 ```

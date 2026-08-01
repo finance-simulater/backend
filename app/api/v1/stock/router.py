@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.stock.schema import (
@@ -10,14 +10,14 @@ from app.api.v1.stock.schema import (
 from app.api.v1.stock.service import StockService
 from app.database import get_db
 
-router = APIRouter(prefix="/api/v1/stocks", tags=["stocks"])
+router = APIRouter(prefix="/api/v1/stocks", tags=["investment"])
 
 
 def get_stock_service(db: Session = Depends(get_db)) -> StockService:
     return StockService(db)
 
 
-@router.get("", response_model=StockPortfolioResponse)
+@router.get("/users/{user_id}", response_model=StockPortfolioResponse)
 async def get_portfolio(
     user_id: int,
     service: StockService = Depends(get_stock_service),
@@ -26,7 +26,11 @@ async def get_portfolio(
     return service.get_portfolio(user_id)
 
 
-@router.post("/buy", response_model=StockActionResponse, status_code=201)
+@router.post(
+    "/users/{user_id}/buy",
+    response_model=StockActionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def buy_stock(
     user_id: int,
     request: StockBuyRequest,
@@ -36,7 +40,7 @@ async def buy_stock(
     return service.buy(user_id, request)
 
 
-@router.post("/sell", response_model=StockActionResponse)
+@router.post("/users/{user_id}/sell", response_model=StockActionResponse)
 async def sell_stock(
     user_id: int,
     request: StockSellRequest,

@@ -8,6 +8,7 @@ __pycache__/
 !.env.example
 !.env.prod.example
 *.log
+cookies.txt
 .DS_Store
 *.egg-info/
 *.pem

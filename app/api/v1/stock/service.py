@@ -50,7 +50,8 @@ class StockService:
     # ── 매수 ──────────────────────────────────────────────────────
 
     def buy(self, user_id: int, request: StockBuyRequest) -> dict:
-        state = self._get_state_or_404(user_id)
+        # 락 순서: SimulationState → StockHolding (매수/매도 공통) 로 통일해 데드락 방지.
+        state = self._get_state_or_404(user_id, for_update=True)
 
         if request.amount > state.cash_balance:
             raise bad_request(
@@ -58,7 +59,9 @@ class StockService:
                 code="INSUFFICIENT_BALANCE",
             )
 
-        holding = self.repository.find_by_user_and_type(user_id, request.stock_type)
+        holding = self.repository.find_by_user_and_type(
+            user_id, request.stock_type, for_update=True
+        )
         if holding:
             holding = self.repository.update_holding(
                 holding,
@@ -80,7 +83,12 @@ class StockService:
     # ── 매도 ──────────────────────────────────────────────────────
 
     def sell(self, user_id: int, request: StockSellRequest) -> dict:
-        holding = self.repository.find_by_user_and_type(user_id, request.stock_type)
+        # 락 순서: SimulationState → StockHolding (매수와 동일) 로 통일해 데드락 방지.
+        state = self._get_state_or_404(user_id, for_update=True)
+
+        holding = self.repository.find_by_user_and_type(
+            user_id, request.stock_type, for_update=True
+        )
         if holding is None:
             raise not_found("보유한 주식이 없습니다.")
 
@@ -90,10 +98,10 @@ class StockService:
                 code="INSUFFICIENT_HOLDINGS",
             )
 
-        state = self._get_state_or_404(user_id)
-
+        # 반올림 오차 누적 방지: 매도한 원금분을 계산해 원금에서 차감한다.
         sell_ratio = request.amount / holding.current_value
-        new_principal = round(holding.principal * (1 - sell_ratio))
+        sold_principal = round(holding.principal * sell_ratio)
+        new_principal = holding.principal - sold_principal
         new_current = holding.current_value - request.amount
 
         if new_current == 0:
@@ -118,8 +126,8 @@ class StockService:
 
     # ── 내부 헬퍼 ──────────────────────────────────────────────────
 
-    def _get_state_or_404(self, user_id: int) -> SimulationState:
-        state = self.repository.find_simulation_state(user_id)
+    def _get_state_or_404(self, user_id: int, for_update: bool = False) -> SimulationState:
+        state = self.repository.find_simulation_state(user_id, for_update=for_update)
         if state is None:
             raise not_found("시뮬레이션 상태를 찾을 수 없습니다. 온보딩을 완료해주세요.")
         return state

@@ -231,7 +231,9 @@ class SimulationService:
         state.cash_balance = cash_balance
         state.credit_score = credit_score
         state.consume_score = consume_score
-        if turn_number >= TOTAL_TURNS:
+        # 활성 대출이 남아있으면 24턴이 지나도 완납할 때까지 종료를 보류한다
+        has_active_loan = loan is not None and loan.status == "active"
+        if turn_number >= TOTAL_TURNS and not has_active_loan:
             state.status = "completed"
         self.state_repository.save(state)
 

@@ -139,6 +139,31 @@ def test_advance_turn_completes_simulation_on_final_turn() -> None:
     assert state.status == "completed"
 
 
+def test_advance_turn_defers_completion_while_active_loan_remains() -> None:
+    state = make_state(current_turn=24)
+    user = User(id=1, monthly_salary=2_000_000)
+    loan = Loan(id=10, duration_months=12, remaining_balance=600_000, status="active")
+    service = make_service(state, user, loan=loan, installment=None)
+
+    service.advance_turn(1, TurnChoiceRequest(food_choice="normal", shopping_choice="normal", leisure_choice="normal"))
+
+    assert state.current_turn == 25
+    assert state.status == "active"
+
+
+def test_advance_turn_completes_once_final_installment_paid_after_turn_limit() -> None:
+    state = make_state(current_turn=24, cash_balance=1_000_000)
+    user = User(id=1, monthly_salary=2_000_000)
+    loan = Loan(id=10, duration_months=6, remaining_balance=100_000, status="active")
+    installment = RepaymentSchedule(installment_number=6, amount=100_000, status="pending")
+    service = make_service(state, user, loan=loan, installment=installment)
+
+    service.advance_turn(1, TurnChoiceRequest(food_choice="normal", shopping_choice="normal", leisure_choice="normal"))
+
+    assert loan.status == "completed"
+    assert state.status == "completed"
+
+
 def test_advance_turn_pays_installment_on_time_and_bumps_credit_score() -> None:
     state = make_state(cash_balance=1_000_000, credit_score=50)
     user = User(id=1, monthly_salary=2_000_000)

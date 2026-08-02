@@ -35,8 +35,12 @@ def make_service(
     fixed_expenses: list[FixedExpense] | None = None,
     loan: Loan | None = None,
     installment: RepaymentSchedule | None = None,
+    installments: list[RepaymentSchedule] | None = None,
 ) -> SimulationService:
     state.user = user
+
+    if installments is None:
+        installments = [installment] if installment is not None else []
 
     state_repository = MagicMock()
     state_repository.find_by_user.return_value = state
@@ -52,8 +56,8 @@ def make_service(
 
     loan_repository = MagicMock()
     loan_repository.find_active_by_user.return_value = loan
-    loan_repository.find_pending_installment.return_value = installment
-    loan_repository.save_repayment.side_effect = lambda loan, installment: loan
+    loan_repository.find_due_installments.return_value = installments
+    loan_repository.save_repayment.side_effect = lambda loan, installments: loan
 
     credit_repository = MagicMock()
     credit_repository.find_by_score.return_value = CreditGradePolicy(
@@ -216,6 +220,71 @@ def test_advance_turn_overdue_when_balance_insufficient() -> None:
     assert turn.loan_repayment_amount == 0
     assert turn.credit_score_delta == -4
     assert state.credit_score == 46
+
+
+def test_advance_turn_catches_up_multiple_missed_installments_at_once() -> None:
+    # 이전 턴에 밀린 1회차(overdue) + 이번 턴 신규 도래한 2회차(pending)를 한 번에 상환
+    state = make_state(cash_balance=1_000_000, credit_score=50)
+    user = User(id=1, monthly_salary=2_000_000)
+    loan = Loan(id=10, duration_months=6, remaining_balance=500_000, status="active")
+    overdue_installment = RepaymentSchedule(installment_number=1, amount=100_000, status="overdue")
+    pending_installment = RepaymentSchedule(installment_number=2, amount=100_000, status="pending")
+    service = make_service(state, user, loan=loan, installments=[overdue_installment, pending_installment])
+
+    turn = service.advance_turn(
+        1, TurnChoiceRequest(food_choice="normal", shopping_choice="normal", leisure_choice="normal")
+    )
+
+    assert overdue_installment.status == "paid"
+    assert pending_installment.status == "paid"
+    assert loan.remaining_balance == 300_000
+    assert turn.loan_repayment_amount == 200_000
+    assert turn.is_overdue is False
+    # 여러 회차를 한 번에 갚아도 정상납입 보너스는 1회만 적용
+    assert turn.credit_score_delta == 1
+    assert loan.status == "active"
+
+
+def test_advance_turn_accumulates_arrears_below_default_threshold() -> None:
+    # 밀린 회차가 2개까지 쌓여도(3개 미만) 부도 처리는 아직 아님
+    state = make_state(cash_balance=0, credit_score=50)
+    user = User(id=1, monthly_salary=0)
+    loan = Loan(id=10, duration_months=6, remaining_balance=500_000, status="active")
+    overdue_installment = RepaymentSchedule(installment_number=1, amount=100_000, status="overdue")
+    pending_installment = RepaymentSchedule(installment_number=2, amount=100_000, status="pending")
+    service = make_service(state, user, loan=loan, installments=[overdue_installment, pending_installment])
+
+    turn = service.advance_turn(
+        1, TurnChoiceRequest(food_choice="save", shopping_choice="save", leisure_choice="save")
+    )
+
+    assert overdue_installment.status == "overdue"
+    assert pending_installment.status == "overdue"
+    assert turn.is_overdue is True
+    assert turn.credit_score_delta == -4
+    assert loan.status == "active"
+
+
+def test_advance_turn_defaults_loan_after_three_consecutive_misses() -> None:
+    # 3개월 연속 상환 실패 → loan_default(-10), 대출 부도 처리
+    state = make_state(cash_balance=0, credit_score=50)
+    user = User(id=1, monthly_salary=0)
+    loan = Loan(id=10, duration_months=6, remaining_balance=500_000, status="active")
+    installments = [
+        RepaymentSchedule(installment_number=1, amount=100_000, status="overdue"),
+        RepaymentSchedule(installment_number=2, amount=100_000, status="overdue"),
+        RepaymentSchedule(installment_number=3, amount=100_000, status="pending"),
+    ]
+    service = make_service(state, user, loan=loan, installments=installments)
+
+    turn = service.advance_turn(
+        1, TurnChoiceRequest(food_choice="save", shopping_choice="save", leisure_choice="save")
+    )
+
+    assert all(i.status == "overdue" for i in installments)
+    assert loan.status == "defaulted"
+    assert turn.credit_score_delta == -10
+    assert state.credit_score == 40
 
 
 def test_advance_turn_rejects_when_expenses_exceed_balance() -> None:

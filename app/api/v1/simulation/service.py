@@ -43,6 +43,9 @@ CONSUME_LEVEL_SCORE_DELTA: dict[ConsumeLevel, int] = {
 # 시뮬레이션 총 진행 턴 수 (1턴 = 1개월, 24턴 = 2년) — 이 턴까지 처리하면 시뮬레이션 종료
 TOTAL_TURNS = 24
 
+# 연체가 이 횟수(3개월) 연속되면 원금 상환 실패로 간주해 대출을 부도 처리한다 (실제 3개월 연체 시 채무불이행자 등록 관행과 동일)
+MAX_CONSECUTIVE_OVERDUE = 3
+
 CATEGORY_LABELS = {
     "food_choice": "식비",
     "shopping_choice": "쇼핑",
@@ -175,28 +178,37 @@ class SimulationService:
         credit_score = state.credit_score
         loan = self.loan_repository.find_active_by_user(user_id)
         if loan is not None:
-            installment = self.loan_repository.find_pending_installment(loan.id, turn_number)
-            if installment is not None:
-                if cash_balance >= installment.amount:
-                    cash_balance -= installment.amount
-                    loan_repayment_amount = installment.amount
-                    installment.status = "paid"
-                    installment.paid_at_turn = turn_number
-                    loan.remaining_balance -= installment.amount
+            # 신규 도래분 + 이전에 연체된 회차를 함께 걷는다(실제 대출처럼 연체분이 누적됨)
+            due_installments = self.loan_repository.find_due_installments(loan.id, turn_number)
+            if due_installments:
+                total_due = sum(i.amount for i in due_installments)
+                if cash_balance >= total_due:
+                    cash_balance -= total_due
+                    loan_repayment_amount = total_due
+                    for installment in due_installments:
+                        installment.status = "paid"
+                        installment.paid_at_turn = turn_number
+                    loan.remaining_balance -= total_due
 
                     credit_score = clamp_score(credit_score + 1)
                     self._record_credit_history(user_id, turn_number, 1, "loan_payment", credit_score)
 
-                    if installment.installment_number == loan.duration_months:
+                    if due_installments[-1].installment_number == loan.duration_months:
                         loan.status = "completed"
                         credit_score = clamp_score(credit_score + 3)
                         self._record_credit_history(user_id, turn_number, 3, "loan_complete", credit_score)
                 else:
-                    installment.status = "overdue"
+                    for installment in due_installments:
+                        installment.status = "overdue"
                     is_overdue = True
-                    credit_score = clamp_score(credit_score - 4)
-                    self._record_credit_history(user_id, turn_number, -4, "overdue", credit_score)
-                self.loan_repository.save_repayment(loan, installment)
+                    if len(due_installments) >= MAX_CONSECUTIVE_OVERDUE:
+                        loan.status = "defaulted"
+                        credit_score = clamp_score(credit_score - 10)
+                        self._record_credit_history(user_id, turn_number, -10, "loan_default", credit_score)
+                    else:
+                        credit_score = clamp_score(credit_score - 4)
+                        self._record_credit_history(user_id, turn_number, -4, "overdue", credit_score)
+                self.loan_repository.save_repayment(loan, due_installments)
 
         consume_score_delta = consume_score - state.consume_score
         credit_score_delta = credit_score - state.credit_score

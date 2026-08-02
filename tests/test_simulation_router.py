@@ -82,6 +82,8 @@ def test_advance_turn_returns_created_turn(client: TestClient) -> None:
         consume_score=50,
         status="active",
     )
+    state.user = User(id=1, monthly_salary=2_000_000)
+
     state_repository = MagicMock()
     state_repository.find_by_user.return_value = state
     state_repository.save.side_effect = lambda s: s
@@ -92,9 +94,6 @@ def test_advance_turn_returns_created_turn(client: TestClient) -> None:
 
     turn_repository = MagicMock()
     turn_repository.create.side_effect = _create_turn
-
-    user_repository = MagicMock()
-    user_repository.find_by_id.return_value = User(id=1, monthly_salary=2_000_000)
 
     fixed_expense_repository = MagicMock()
     fixed_expense_repository.find_all_by_user.return_value = []
@@ -111,7 +110,6 @@ def test_advance_turn_returns_created_turn(client: TestClient) -> None:
         db=MagicMock(),
         state_repository=state_repository,
         turn_repository=turn_repository,
-        user_repository=user_repository,
         fixed_expense_repository=fixed_expense_repository,
         expense_repository=expense_repository,
         loan_repository=loan_repository,

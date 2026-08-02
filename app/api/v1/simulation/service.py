@@ -21,7 +21,6 @@ from app.api.v1.simulation.repository import (
 )
 from app.api.v1.simulation.schema import ConsumeLevel, SimulationStateResponse, TurnChoiceRequest
 from app.api.v1.stock.repository import StockHoldingRepository
-from app.api.v1.user.repository import UserRepository
 from app.core.exceptions import conflict, not_found, unprocessable
 from app.core.scoring import clamp_score
 
@@ -41,6 +40,9 @@ CONSUME_LEVEL_SCORE_DELTA: dict[ConsumeLevel, int] = {
     "much": -5,
 }
 
+# 시뮬레이션 총 진행 턴 수 (1턴 = 1개월, 24턴 = 2년) — 이 턴까지 처리하면 시뮬레이션 종료
+TOTAL_TURNS = 24
+
 CATEGORY_LABELS = {
     "food_choice": "식비",
     "shopping_choice": "쇼핑",
@@ -54,7 +56,6 @@ class SimulationService:
         db: Session,
         state_repository: SimulationStateRepository | None = None,
         turn_repository: TurnRepository | None = None,
-        user_repository: UserRepository | None = None,
         fixed_expense_repository: FixedExpenseRepository | None = None,
         expense_repository: ExpenseRepository | None = None,
         loan_repository: LoanRepository | None = None,
@@ -65,7 +66,6 @@ class SimulationService:
         self.db = db
         self.state_repository = state_repository or SimulationStateRepository(db)
         self.turn_repository = turn_repository or TurnRepository(db)
-        self.user_repository = user_repository or UserRepository(db)
         self.fixed_expense_repository = fixed_expense_repository or FixedExpenseRepository(db)
         self.expense_repository = expense_repository or ExpenseRepository(db)
         self.loan_repository = loan_repository or LoanRepository(db)
@@ -104,8 +104,9 @@ class SimulationService:
         return turn
 
     def advance_turn(self, user_id: int, choice: TurnChoiceRequest) -> Turn:
-        # user_id 행을 잠그고 시작해 동시 요청으로 인한 lost-update(급여 이중 지급 등)를 방지
-        state = get_simulation_state_or_404(self.state_repository, user_id, for_update=True)
+        # user_id 행을 잠그고 시작해 동시 요청으로 인한 lost-update(급여 이중 지급 등)를 방지.
+        # with_user=True로 users 테이블을 조인해 함께 가져와 별도 조회를 없앤다.
+        state = get_simulation_state_or_404(self.state_repository, user_id, for_update=True, with_user=True)
         try:
             turn = self._advance_turn_locked(state, user_id, choice)
             self.db.commit()
@@ -118,9 +119,7 @@ class SimulationService:
         if state.status != "active":
             raise conflict("이미 완료된 시뮬레이션입니다", code="SIMULATION_ALREADY_COMPLETED")
 
-        user = self.user_repository.find_by_id(user_id)
-        if user is None:
-            raise not_found("사용자를 찾을 수 없습니다")
+        user = state.user
 
         turn_number = state.current_turn
         year, month = state.current_year, state.current_month
@@ -232,6 +231,8 @@ class SimulationService:
         state.cash_balance = cash_balance
         state.credit_score = credit_score
         state.consume_score = consume_score
+        if turn_number >= TOTAL_TURNS:
+            state.status = "completed"
         self.state_repository.save(state)
 
         return turn

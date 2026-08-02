@@ -36,15 +36,14 @@ def make_service(
     loan: Loan | None = None,
     installment: RepaymentSchedule | None = None,
 ) -> SimulationService:
+    state.user = user
+
     state_repository = MagicMock()
     state_repository.find_by_user.return_value = state
     state_repository.save.side_effect = lambda s: s
 
     turn_repository = MagicMock()
     turn_repository.create.side_effect = lambda t: t
-
-    user_repository = MagicMock()
-    user_repository.find_by_id.return_value = user
 
     fixed_expense_repository = MagicMock()
     fixed_expense_repository.find_all_by_user.return_value = fixed_expenses or []
@@ -70,7 +69,6 @@ def make_service(
         db=MagicMock(),
         state_repository=state_repository,
         turn_repository=turn_repository,
-        user_repository=user_repository,
         fixed_expense_repository=fixed_expense_repository,
         expense_repository=expense_repository,
         loan_repository=loan_repository,
@@ -104,6 +102,21 @@ def test_advance_turn_without_loan_computes_expenses_and_consume_score() -> None
     assert turn.loan_repayment_amount == 0
 
 
+def test_advance_turn_records_clamped_consume_score_delta_at_upper_bound() -> None:
+    # consume_score=99, raw delta 합산은 +6("save" 3개)이지만 100을 넘을 수 없으므로
+    # 실제 반영된 변화량(+1)이 turn.consume_score_delta에 기록되어야 한다
+    state = make_state(consume_score=99)
+    user = User(id=1, monthly_salary=2_000_000)
+    service = make_service(state, user)
+
+    turn = service.advance_turn(
+        1, TurnChoiceRequest(food_choice="save", shopping_choice="save", leisure_choice="save")
+    )
+
+    assert state.consume_score == 100
+    assert turn.consume_score_delta == 1
+
+
 def test_advance_turn_rolls_over_year_on_december() -> None:
     state = make_state(current_month=12)
     user = User(id=1, monthly_salary=1_000_000)
@@ -113,6 +126,17 @@ def test_advance_turn_rolls_over_year_on_december() -> None:
 
     assert state.current_month == 1
     assert state.current_year == 2027
+
+
+def test_advance_turn_completes_simulation_on_final_turn() -> None:
+    state = make_state(current_turn=24)
+    user = User(id=1, monthly_salary=2_000_000)
+    service = make_service(state, user)
+
+    service.advance_turn(1, TurnChoiceRequest(food_choice="normal", shopping_choice="normal", leisure_choice="normal"))
+
+    assert state.current_turn == 25
+    assert state.status == "completed"
 
 
 def test_advance_turn_pays_installment_on_time_and_bumps_credit_score() -> None:

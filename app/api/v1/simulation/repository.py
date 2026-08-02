@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.v1.simulation.model import SimulationState, Turn
 from app.core.exceptions import not_found
@@ -8,8 +8,12 @@ class SimulationStateRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def find_by_user(self, user_id: int, for_update: bool = False) -> SimulationState | None:
+    def find_by_user(
+        self, user_id: int, for_update: bool = False, with_user: bool = False
+    ) -> SimulationState | None:
         query = self.db.query(SimulationState).filter(SimulationState.user_id == user_id)
+        if with_user:
+            query = query.options(joinedload(SimulationState.user))
         if for_update:
             query = query.with_for_update()
         return query.first()
@@ -21,9 +25,9 @@ class SimulationStateRepository:
 
 
 def get_simulation_state_or_404(
-    repository: SimulationStateRepository, user_id: int, for_update: bool = False
+    repository: SimulationStateRepository, user_id: int, for_update: bool = False, with_user: bool = False
 ) -> SimulationState:
-    state = repository.find_by_user(user_id, for_update=for_update)
+    state = repository.find_by_user(user_id, for_update=for_update, with_user=with_user)
     if state is None:
         raise not_found("시뮬레이션 정보를 찾을 수 없습니다")
     return state

@@ -28,6 +28,25 @@ class LoanRepository:
             .all()
         )
 
+    def find_due_installments(self, loan_id: int, up_to_turn: int) -> list[RepaymentSchedule]:
+        """상환일이 도래했지만 아직 완납되지 않은 회차(신규 도래분 + 이전 연체분) 전체를 반환."""
+        return (
+            self.db.query(RepaymentSchedule)
+            .filter(
+                RepaymentSchedule.loan_id == loan_id,
+                RepaymentSchedule.due_turn <= up_to_turn,
+                RepaymentSchedule.status.in_(["pending", "overdue"]),
+            )
+            .order_by(RepaymentSchedule.installment_number)
+            .all()
+        )
+
+    def save_repayment(self, loan: Loan, installments: list[RepaymentSchedule]) -> Loan:
+        self.db.add(loan)
+        self.db.add_all(installments)
+        self.db.flush()
+        return loan
+
     def create_with_schedule(self, loan: Loan, schedule: list[RepaymentSchedule]) -> Loan:
         self.db.add(loan)
         self.db.flush()

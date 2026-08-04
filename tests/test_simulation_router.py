@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.v1.auth.dependencies import get_current_user
 from app.api.v1.credit.model import CreditGradePolicy
 from app.api.v1.simulation.model import SimulationState
 from app.api.v1.simulation.router import get_simulation_service
@@ -19,8 +20,14 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def _override(service: SimulationService):
+def _override(service: SimulationService, user: User):
     app.dependency_overrides[get_simulation_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: user
+
+
+def _clear_overrides():
+    app.dependency_overrides.pop(get_simulation_service, None)
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_get_dashboard_returns_serialized_state(client: TestClient) -> None:
@@ -55,12 +62,12 @@ def test_get_dashboard_returns_serialized_state(client: TestClient) -> None:
         loan_repository=loan_repository,
         stock_repository=stock_repository,
     )
-    _override(service)
+    _override(service, User(id=1, monthly_salary=2_000_000))
 
     try:
-        response = client.get("/api/v1/simulation/users/1")
+        response = client.get("/api/v1/simulation")
     finally:
-        app.dependency_overrides.pop(get_simulation_service, None)
+        _clear_overrides()
 
     assert response.status_code == 200
     body = response.json()
@@ -115,15 +122,15 @@ def test_advance_turn_returns_created_turn(client: TestClient) -> None:
         loan_repository=loan_repository,
         stock_repository=stock_repository,
     )
-    _override(service)
+    _override(service, User(id=1, monthly_salary=2_000_000))
 
     try:
         response = client.post(
-            "/api/v1/simulation/users/1/turns",
+            "/api/v1/simulation/turns",
             json={"food_choice": "normal", "shopping_choice": "normal", "leisure_choice": "normal"},
         )
     finally:
-        app.dependency_overrides.pop(get_simulation_service, None)
+        _clear_overrides()
 
     assert response.status_code == 201
     body = response.json()

@@ -32,6 +32,16 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    connection = op.get_bind()
+    defaulted_count = connection.execute(
+        sa.text("SELECT COUNT(*) FROM loans WHERE status = 'defaulted'")
+    ).scalar()
+    if defaulted_count:
+        raise RuntimeError(
+            f"{defaulted_count}개의 loans 행이 status='defaulted' 상태라 downgrade할 수 없습니다. "
+            "'defaulted'인 대출을 다른 상태로 먼저 정리한 뒤 다시 시도하세요."
+        )
+
     op.alter_column(
         'loans',
         'status',

@@ -108,8 +108,8 @@ class SimulationService:
 
     def advance_turn(self, user_id: int, choice: TurnChoiceRequest) -> Turn:
         # user_id 행을 잠그고 시작해 동시 요청으로 인한 lost-update(급여 이중 지급 등)를 방지.
-        # with_user=True로 users 테이블을 조인해 함께 가져와 별도 조회를 없앤다.
-        state = get_simulation_state_or_404(self.state_repository, user_id, for_update=True, with_user=True)
+        # User는 여기서 수정하지 않으므로 같이 잠그지 않고 필요할 때 별도(락 없는) 쿼리로 가져온다.
+        state = get_simulation_state_or_404(self.state_repository, user_id, for_update=True)
         try:
             turn = self._advance_turn_locked(state, user_id, choice)
             self.db.commit()
@@ -201,6 +201,9 @@ class SimulationService:
                     for installment in due_installments:
                         installment.status = "overdue"
                     is_overdue = True
+                    # due_installments 개수를 "연속 연체 횟수"로 취급한다. 회차 스케줄이
+                    # started_turn + installment_number로 매 턴 1회차씩만 도래하도록 생성되기 때문에
+                    # 성립 — 회차 생성 로직이 바뀌면(예: 한 턴에 여러 회차 도래) 재검토 필요.
                     if len(due_installments) >= MAX_CONSECUTIVE_OVERDUE:
                         loan.status = "defaulted"
                         credit_score = clamp_score(credit_score - 10)

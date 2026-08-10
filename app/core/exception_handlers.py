@@ -9,7 +9,8 @@ from app.core.exceptions import AppHTTPException
 logger = logging.getLogger(__name__)
 
 # FastAPI 기본 HTTPException엔 `code`가 없다. AppHTTPException을 못 쓴 곳(또는 아직 안 고친 곳)에서도
-# 응답 형식이 깨지지 않도록, status 코드만 보고 채워 넣을 기본값. api/domains/errors.md "공통" 표와 맞춘다.
+# 응답 형식이 깨지지 않도록, status 코드만 보고 채워 넣을 기본값.
+# spec 저장소(finance-simulater/spec)의 api/domains/errors.md "공통" 표와 맞춘다.
 _DEFAULT_CODE_BY_STATUS = {
     400: "INVALID_REQUEST",
     401: "UNAUTHENTICATED",

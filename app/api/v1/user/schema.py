@@ -7,7 +7,7 @@ from pydantic import ConfigDict
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
     nickname: str = Field(min_length=1, max_length=50)
     profile_image_seed: str = Field(min_length=1, max_length=50)
     job_type: Literal["employee", "freelancer", "other"]

@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.9.0"
 
   required_providers {
     aws = {
@@ -50,6 +50,7 @@ locals {
   frontend_origin_id   = "${var.project_name}-frontend-s3-origin"
   upload_bucket_name   = var.upload_bucket_name != "" ? var.upload_bucket_name : "${var.project_name}-uploads-${data.aws_caller_identity.current.account_id}"
   ssh_allowed_cidrs    = length(var.ssh_allowed_cidrs) > 0 ? var.ssh_allowed_cidrs : [var.ssh_allowed_cidr]
+  ses_enabled          = var.ses_domain_name != ""
 }
 
 data "aws_iam_policy_document" "ec2_assume_role" {
@@ -472,4 +473,39 @@ resource "aws_iam_role_policy" "web_uploads_s3" {
   name   = "${var.project_name}-uploads-s3-access"
   role   = aws_iam_role.web.id
   policy = data.aws_iam_policy_document.web_uploads_s3.json
+}
+
+resource "aws_sesv2_email_identity" "sender_domain" {
+  count = local.ses_enabled ? 1 : 0
+
+  email_identity = var.ses_domain_name
+
+  tags = {
+    Name    = "${var.project_name}-email-domain"
+    Project = var.project_name
+  }
+}
+
+data "aws_iam_policy_document" "web_ses_send" {
+  count = local.ses_enabled ? 1 : 0
+
+  statement {
+    sid       = "AllowVerificationEmailSend"
+    actions   = ["ses:SendEmail"]
+    resources = [aws_sesv2_email_identity.sender_domain[0].arn]
+
+    condition {
+      test     = "StringEqualsIgnoreCase"
+      variable = "ses:FromAddress"
+      values   = [var.ses_from_address]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "web_ses_send" {
+  count = local.ses_enabled ? 1 : 0
+
+  name   = "${var.project_name}-ses-send"
+  role   = aws_iam_role.web.id
+  policy = data.aws_iam_policy_document.web_ses_send[0].json
 }

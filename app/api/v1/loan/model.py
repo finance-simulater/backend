@@ -31,7 +31,7 @@ class Loan(Base):
     monthly_payment = Column(Integer, nullable=False)
     total_repayment = Column(Integer, nullable=False)
     remaining_balance = Column(Integer, nullable=False)
-    status = Column(Enum("active", "completed"), nullable=False, server_default="active")
+    status = Column(Enum("active", "completed", "defaulted"), nullable=False, server_default="active")
     started_turn = Column(Integer, nullable=False)
     active_user_id = Column(
         BigInteger,

@@ -2,8 +2,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
-from app.api.v1.credit.model import CreditGradePolicy
-from app.api.v1.credit.repository import CreditGradePolicyRepository
+from app.api.v1.credit.repository import CreditGradePolicyRepository, get_grade_policy_or_404
 from app.api.v1.loan.model import Loan, RepaymentSchedule
 from app.api.v1.loan.repository import LoanRepository
 from app.api.v1.loan.schema import (
@@ -14,8 +13,7 @@ from app.api.v1.loan.schema import (
     LoanStatusResponse,
     RepaymentScheduleItem,
 )
-from app.api.v1.simulation.model import SimulationState
-from app.api.v1.simulation.repository import SimulationStateRepository
+from app.api.v1.simulation.repository import SimulationStateRepository, get_simulation_state_or_404
 from app.core.exceptions import conflict, not_found, unprocessable
 
 # 등급별 기본금리에서 대출 기간에 따라 +-2%p 가산/차감 (3개월 -2, 6개월 0, 12개월 +2)
@@ -52,8 +50,8 @@ class LoanService:
         return self.repository.find_schedule_by_loan(loan_id)
 
     def get_eligibility(self, user_id: int) -> LoanEligibilityResponse:
-        simulation_state = self._get_simulation_state(user_id)
-        grade_policy = self._get_grade_policy(simulation_state.credit_score)
+        simulation_state = get_simulation_state_or_404(self.simulation_repository, user_id)
+        grade_policy = get_grade_policy_or_404(self.credit_repository, simulation_state.credit_score)
         comparison = self.credit_repository.find_all_ordered()
         return LoanEligibilityResponse(
             credit_grade=grade_policy.grade,
@@ -64,8 +62,8 @@ class LoanService:
         )
 
     def get_quote(self, user_id: int, principal: int, duration_months: int) -> LoanQuoteResponse:
-        simulation_state = self._get_simulation_state(user_id)
-        grade_policy = self._get_grade_policy(simulation_state.credit_score)
+        simulation_state = get_simulation_state_or_404(self.simulation_repository, user_id)
+        grade_policy = get_grade_policy_or_404(self.credit_repository, simulation_state.credit_score)
         interest_rate = self._resolve_interest_rate(grade_policy.base_interest_rate, duration_months)
         monthly_payment = self._calculate_monthly_payment(principal, interest_rate, duration_months)
         total_repayment = monthly_payment * duration_months
@@ -95,8 +93,8 @@ class LoanService:
         if self.repository.find_active_by_user(user_id) is not None:
             raise conflict("이미 진행 중인 대출이 있어 신규 신청이 불가합니다", code="LOAN_ALREADY_ACTIVE")
 
-        simulation_state = self._get_simulation_state(user_id)
-        grade_policy = self._get_grade_policy(simulation_state.credit_score)
+        simulation_state = get_simulation_state_or_404(self.simulation_repository, user_id)
+        grade_policy = get_grade_policy_or_404(self.credit_repository, simulation_state.credit_score)
 
         # AI 자동심사->신용등급별 한도 초과 여부 승인/거절 판단
         if principal > grade_policy.credit_limit:
@@ -132,18 +130,6 @@ class LoanService:
             for installment_number in range(1, duration_months + 1)
         ]
         return self.repository.create_with_schedule(loan, schedule)
-
-    def _get_simulation_state(self, user_id: int) -> SimulationState:
-        simulation_state = self.simulation_repository.find_by_user(user_id)
-        if simulation_state is None:
-            raise not_found("시뮬레이션 정보를 찾을 수 없습니다")
-        return simulation_state
-
-    def _get_grade_policy(self, credit_score: int) -> CreditGradePolicy:
-        grade_policy = self.credit_repository.find_by_score(credit_score)
-        if grade_policy is None:
-            raise not_found("신용 등급 정보를 찾을 수 없습니다")
-        return grade_policy
 
     @staticmethod
     def _resolve_interest_rate(base_rate: Decimal, duration_months: int) -> Decimal:

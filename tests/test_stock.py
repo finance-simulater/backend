@@ -9,22 +9,32 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.v1.auth.dependencies import get_current_user
 from app.api.v1.simulation.model import SimulationState
 from app.api.v1.stock.model import StockHolding
-from app.api.v1.stock.repository import StockRepository
 from app.api.v1.stock.router import get_stock_service
 from app.api.v1.stock.service import StockService
+from app.api.v1.user.model import User
 from app.main import app
 
 USER_ID = 1
 
 
 class FakeStockRepository:
-    """StockRepository를 흉내내는 in-memory 저장소."""
+    """StockHoldingRepository를 흉내내는 in-memory 저장소."""
 
-    def __init__(self, cash_balance: int, holdings: list[StockHolding] | None = None) -> None:
+    def __init__(
+        self,
+        cash_balance: int,
+        holdings: list[StockHolding] | None = None,
+        status: str = "active",
+    ) -> None:
         self.state = SimulationState(
-            user_id=USER_ID, current_year=2025, current_month=1, cash_balance=cash_balance
+            user_id=USER_ID,
+            current_year=2025,
+            current_month=1,
+            cash_balance=cash_balance,
+            status=status,
         )
         self.holdings: list[StockHolding] = holdings or []
         self._next_id = max((h.id for h in self.holdings), default=0) + 1
@@ -72,8 +82,10 @@ class FakeStockRepository:
 
 
 def make_client(repo: FakeStockRepository) -> TestClient:
+    """서비스와 인증을 모두 오버라이드한, 로그인된 상태의 클라이언트."""
     service = StockService(db=MagicMock(), repository=repo)
     app.dependency_overrides[get_stock_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: User(id=USER_ID)
     return TestClient(app)
 
 
@@ -81,6 +93,7 @@ def make_client(repo: FakeStockRepository) -> TestClient:
 def _cleanup_overrides():
     yield
     app.dependency_overrides.pop(get_stock_service, None)
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 def _holding(stock_type: str, principal: int, current_value: int, hid: int = 1) -> StockHolding:
@@ -94,7 +107,7 @@ def _holding(stock_type: str, principal: int, current_value: int, hid: int = 1) 
 def test_get_portfolio_empty() -> None:
     client = make_client(FakeStockRepository(cash_balance=500_000))
 
-    res = client.get(f"/api/v1/stocks/users/{USER_ID}")
+    res = client.get("/api/v1/stocks")
 
     assert res.status_code == 200
     body = res.json()
@@ -111,7 +124,7 @@ def test_get_portfolio_with_holdings_computes_totals_and_pnl() -> None:
     )
     client = make_client(repo)
 
-    res = client.get(f"/api/v1/stocks/users/{USER_ID}")
+    res = client.get("/api/v1/stocks")
 
     assert res.status_code == 200
     body = res.json()
@@ -129,7 +142,7 @@ def test_get_portfolio_no_simulation_state_returns_404() -> None:
     repo.state.user_id = 999  # 조회 유저와 불일치 → 상태 없음
     client = make_client(repo)
 
-    res = client.get(f"/api/v1/stocks/users/{USER_ID}")
+    res = client.get("/api/v1/stocks")
 
     assert res.status_code == 404
     assert res.json()["code"] == "NOT_FOUND"
@@ -142,7 +155,7 @@ def test_buy_success_deducts_cash_and_creates_holding() -> None:
     client = make_client(repo)
 
     res = client.post(
-        f"/api/v1/stocks/users/{USER_ID}/buy",
+        "/api/v1/stocks/buy",
         json={"stock_type": "high_vol", "amount": 200_000},
     )
 
@@ -162,7 +175,7 @@ def test_buy_existing_holding_merges_amount() -> None:
     client = make_client(repo)
 
     res = client.post(
-        f"/api/v1/stocks/users/{USER_ID}/buy",
+        "/api/v1/stocks/buy",
         json={"stock_type": "high_vol", "amount": 50_000},
     )
 
@@ -177,7 +190,7 @@ def test_buy_insufficient_balance_returns_400() -> None:
     client = make_client(repo)
 
     res = client.post(
-        f"/api/v1/stocks/users/{USER_ID}/buy",
+        "/api/v1/stocks/buy",
         json={"stock_type": "low_vol", "amount": 300_000},
     )
 
@@ -196,7 +209,7 @@ def test_sell_partial_reduces_principal_and_adds_cash() -> None:
     client = make_client(repo)
 
     res = client.post(
-        f"/api/v1/stocks/users/{USER_ID}/sell",
+        "/api/v1/stocks/sell",
         json={"stock_type": "high_vol", "amount": 100_000},
     )
 
@@ -216,7 +229,7 @@ def test_sell_full_deletes_holding_and_returns_null() -> None:
     client = make_client(repo)
 
     res = client.post(
-        f"/api/v1/stocks/users/{USER_ID}/sell",
+        "/api/v1/stocks/sell",
         json={"stock_type": "index", "amount": 100_000},
     )
 
@@ -232,7 +245,7 @@ def test_sell_not_owned_returns_404() -> None:
     client = make_client(repo)
 
     res = client.post(
-        f"/api/v1/stocks/users/{USER_ID}/sell",
+        "/api/v1/stocks/sell",
         json={"stock_type": "low_vol", "amount": 10_000},
     )
 
@@ -248,10 +261,80 @@ def test_sell_exceeds_holding_returns_400() -> None:
     client = make_client(repo)
 
     res = client.post(
-        f"/api/v1/stocks/users/{USER_ID}/sell",
+        "/api/v1/stocks/sell",
         json={"stock_type": "index", "amount": 200_000},
     )
 
     assert res.status_code == 400
     assert res.json()["code"] == "INSUFFICIENT_HOLDINGS"
     assert repo.state.cash_balance == 100_000  # 미변경
+
+
+# ── 인증 ──────────────────────────────────────────────────────────
+
+def test_requires_authentication() -> None:
+    """인증 없이 호출하면 401. (loans·simulation과 동일한 Bearer 규약)"""
+    repo = FakeStockRepository(cash_balance=100_000)
+    service = StockService(db=MagicMock(), repository=repo)
+    app.dependency_overrides[get_stock_service] = lambda: service
+
+    client = TestClient(app)
+
+    assert client.get("/api/v1/stocks").status_code == 401
+    assert client.post(
+        "/api/v1/stocks/buy", json={"stock_type": "index", "amount": 10_000}
+    ).status_code == 401
+    assert client.post(
+        "/api/v1/stocks/sell", json={"stock_type": "index", "amount": 10_000}
+    ).status_code == 401
+
+
+# ── 시뮬레이션 종료 ────────────────────────────────────────────────
+
+def test_buy_on_completed_simulation_returns_409() -> None:
+    repo = FakeStockRepository(cash_balance=500_000, status="completed")
+    client = make_client(repo)
+
+    res = client.post(
+        "/api/v1/stocks/buy",
+        json={"stock_type": "high_vol", "amount": 100_000},
+    )
+
+    assert res.status_code == 409
+    assert res.json()["code"] == "SIMULATION_ALREADY_COMPLETED"
+    assert repo.state.cash_balance == 500_000  # 미변경
+    assert repo.holdings == []
+
+
+def test_sell_on_completed_simulation_returns_409() -> None:
+    repo = FakeStockRepository(
+        cash_balance=100_000,
+        holdings=[_holding("index", principal=100_000, current_value=100_000, hid=2)],
+        status="completed",
+    )
+    client = make_client(repo)
+
+    res = client.post(
+        "/api/v1/stocks/sell",
+        json={"stock_type": "index", "amount": 100_000},
+    )
+
+    assert res.status_code == 409
+    assert res.json()["code"] == "SIMULATION_ALREADY_COMPLETED"
+    assert repo.state.cash_balance == 100_000  # 미변경
+    assert len(repo.holdings) == 1
+
+
+def test_get_portfolio_still_readable_after_completion() -> None:
+    """종료 후에도 결과 화면에서 보유 현황은 조회할 수 있어야 한다."""
+    repo = FakeStockRepository(
+        cash_balance=100_000,
+        holdings=[_holding("index", principal=100_000, current_value=120_000, hid=2)],
+        status="completed",
+    )
+    client = make_client(repo)
+
+    res = client.get("/api/v1/stocks")
+
+    assert res.status_code == 200
+    assert res.json()["total_current_value"] == 120_000

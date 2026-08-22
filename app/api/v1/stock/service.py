@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 
-from app.api.v1.stock.repository import StockRepository
+from app.api.v1.stock.repository import StockHoldingRepository
 from app.api.v1.stock.schema import STOCK_META, StockBuyRequest, StockSellRequest
 from app.api.v1.simulation.model import SimulationState
 from app.api.v1.stock.model import StockHolding
-from app.core.exceptions import bad_request, not_found
+from app.core.exceptions import bad_request, conflict, not_found
 
 
 def _to_holding_dict(holding: StockHolding) -> dict:
@@ -28,9 +28,9 @@ def _to_holding_dict(holding: StockHolding) -> dict:
 
 
 class StockService:
-    def __init__(self, db: Session, repository: StockRepository | None = None) -> None:
+    def __init__(self, db: Session, repository: StockHoldingRepository | None = None) -> None:
         self.db = db
-        self.repository = repository or StockRepository(db)
+        self.repository = repository or StockHoldingRepository(db)
 
     def get_portfolio(self, user_id: int) -> dict:
         state = self._get_state_or_404(user_id)
@@ -52,6 +52,7 @@ class StockService:
     def buy(self, user_id: int, request: StockBuyRequest) -> dict:
         # 락 순서: SimulationState → StockHolding (매수/매도 공통) 로 통일해 데드락 방지.
         state = self._get_state_or_404(user_id, for_update=True)
+        self._ensure_active(state)
 
         if request.amount > state.cash_balance:
             raise bad_request(
@@ -85,6 +86,7 @@ class StockService:
     def sell(self, user_id: int, request: StockSellRequest) -> dict:
         # 락 순서: SimulationState → StockHolding (매수와 동일) 로 통일해 데드락 방지.
         state = self._get_state_or_404(user_id, for_update=True)
+        self._ensure_active(state)
 
         holding = self.repository.find_by_user_and_type(
             user_id, request.stock_type, for_update=True
@@ -131,3 +133,10 @@ class StockService:
         if state is None:
             raise not_found("시뮬레이션 상태를 찾을 수 없습니다. 온보딩을 완료해주세요.")
         return state
+
+    @staticmethod
+    def _ensure_active(state: SimulationState) -> None:
+        # 종료된 시뮬레이션은 결과가 확정된 상태다. 조회는 허용하되 자산을 바꾸는 매매는 막는다.
+        # (simulation.advance_turn과 동일한 코드/상태값을 쓴다)
+        if state.status != "active":
+            raise conflict("이미 완료된 시뮬레이션입니다", code="SIMULATION_ALREADY_COMPLETED")

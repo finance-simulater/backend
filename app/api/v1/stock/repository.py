@@ -1,10 +1,11 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.v1.simulation.model import SimulationState
 from app.api.v1.stock.model import StockHolding
 
 
-class StockRepository:
+class StockHoldingRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -14,6 +15,14 @@ class StockRepository:
             .filter(StockHolding.user_id == user_id)
             .all()
         )
+
+    def sum_current_value_by_user(self, user_id: int) -> int:
+        total = (
+            self.db.query(func.coalesce(func.sum(StockHolding.current_value), 0))
+            .filter(StockHolding.user_id == user_id)
+            .scalar()
+        )
+        return int(total)
 
     def find_by_user_and_type(
         self, user_id: int, stock_type: str, for_update: bool = False

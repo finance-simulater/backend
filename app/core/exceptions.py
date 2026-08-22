@@ -8,6 +8,11 @@ class AppHTTPException(HTTPException):
         super().__init__(status_code=status_code, detail=detail)
         self.code = code
 
+
+def bad_request(detail: str, code: str = "INVALID_REQUEST") -> AppHTTPException:
+    return AppHTTPException(status_code=status.HTTP_400_BAD_REQUEST, code=code, detail=detail)
+
+
 def not_found(detail: str, code: str = "NOT_FOUND") -> AppHTTPException:
     return AppHTTPException(status_code=status.HTTP_404_NOT_FOUND, code=code, detail=detail)
 
@@ -34,6 +39,7 @@ def too_many_requests(detail: str, code: str = "TOO_MANY_REQUESTS") -> AppHTTPEx
 
 def unprocessable(detail: str, code: str) -> AppHTTPException:
     return AppHTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, code=code, detail=detail)
+
 
 def service_unavailable(detail: str, code: str = "SERVICE_UNAVAILABLE") -> AppHTTPException:
     return AppHTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, code=code, detail=detail)

@@ -18,6 +18,9 @@ class CreditGradePolicyRepository:
     def find_all_ordered(self) -> list[CreditGradePolicy]:
         return self.db.query(CreditGradePolicy).order_by(CreditGradePolicy.grade_rank).all()
 
+    def find_by_rank(self, grade_rank: int) -> CreditGradePolicy | None:
+        return self.db.query(CreditGradePolicy).filter(CreditGradePolicy.grade_rank == grade_rank).first()
+
 
 def get_grade_policy_or_404(repository: CreditGradePolicyRepository, credit_score: int) -> CreditGradePolicy:
     grade_policy = repository.find_by_score(credit_score)
@@ -34,3 +37,9 @@ class CreditHistoryRepository:
         self.db.add(credit_history)
         self.db.flush()
         return credit_history
+
+    def find_by_user_paginated(self, user_id: int, cursor: int | None, size: int) -> list[CreditHistory]:
+        query = self.db.query(CreditHistory).filter(CreditHistory.user_id == user_id)
+        if cursor is not None:
+            query = query.filter(CreditHistory.id < cursor)
+        return query.order_by(CreditHistory.id.desc()).limit(size).all()

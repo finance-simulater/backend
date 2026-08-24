@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.v1.auth.dependencies import get_current_user
-from app.api.v1.loan.model import Loan
+from app.api.v1.loan.model import Loan, RepaymentSchedule
 from app.api.v1.loan.router import get_loan_service
 from app.api.v1.loan.service import LoanService
 from app.api.v1.user.model import User
@@ -82,6 +82,39 @@ def test_get_loan_returns_200_for_own_loan() -> None:
 
     assert response.status_code == 200
     assert response.json()["user_id"] == OWNER_ID
+
+
+def test_get_schedule_returns_200_with_serialized_items_for_own_loan() -> None:
+    repository = MagicMock()
+    repository.find_by_id.return_value = make_loan(loan_id=5, user_id=OWNER_ID)
+    repository.find_schedule_by_loan.return_value = [
+        RepaymentSchedule(
+            id=1,
+            loan_id=5,
+            installment_number=1,
+            due_turn=2,
+            amount=170_000,
+            status="pending",
+            paid_at_turn=None,
+            created_at=datetime.now(timezone.utc),
+        )
+    ]
+    app.dependency_overrides[get_loan_service] = lambda: LoanService(db=MagicMock(), repository=repository)
+    app.dependency_overrides[get_current_user] = lambda: User(id=OWNER_ID)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/loans/5/schedule")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "installment_number": 1,
+            "due_turn": 2,
+            "amount": 170_000,
+            "status": "pending",
+            "paid_at_turn": None,
+        }
+    ]
 
 
 def test_list_loans_scopes_to_current_user() -> None:

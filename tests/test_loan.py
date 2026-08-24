@@ -149,3 +149,54 @@ def test_get_active_loan_status_raises_not_found_when_no_active_loan() -> None:
         service.get_active_loan_status(1)
 
     assert exc_info.value.status_code == 404
+
+
+def test_get_loans_scopes_to_requesting_user() -> None:
+    service = make_service(make_state(), make_grade_policy())
+    owned_loans = [Loan(id=1, user_id=1, status="active")]
+    service.repository.find_all_by_user.return_value = owned_loans
+
+    result = service.get_loans(1)
+
+    assert result == owned_loans
+    service.repository.find_all_by_user.assert_called_once_with(1)
+
+
+def test_get_loan_returns_loan_when_owned_by_requesting_user() -> None:
+    service = make_service(make_state(), make_grade_policy())
+    service.repository.find_by_id.return_value = Loan(id=5, user_id=1, status="active")
+
+    loan = service.get_loan(user_id=1, loan_id=5)
+
+    assert loan.id == 5
+
+
+def test_get_loan_raises_not_found_when_owned_by_another_user() -> None:
+    service = make_service(make_state(), make_grade_policy())
+    service.repository.find_by_id.return_value = Loan(id=5, user_id=2, status="active")
+
+    with pytest.raises(AppHTTPException) as exc_info:
+        service.get_loan(user_id=1, loan_id=5)
+
+    assert exc_info.value.status_code == 404
+
+
+def test_get_loan_raises_not_found_when_loan_missing() -> None:
+    service = make_service(make_state(), make_grade_policy())
+    service.repository.find_by_id.return_value = None
+
+    with pytest.raises(AppHTTPException) as exc_info:
+        service.get_loan(user_id=1, loan_id=999)
+
+    assert exc_info.value.status_code == 404
+
+
+def test_get_schedule_raises_not_found_when_owned_by_another_user() -> None:
+    service = make_service(make_state(), make_grade_policy())
+    service.repository.find_by_id.return_value = Loan(id=5, user_id=2, status="active")
+
+    with pytest.raises(AppHTTPException) as exc_info:
+        service.get_schedule(user_id=1, loan_id=5)
+
+    assert exc_info.value.status_code == 404
+    service.repository.find_schedule_by_loan.assert_not_called()

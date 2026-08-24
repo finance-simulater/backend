@@ -17,6 +17,7 @@ class CreditScoreResponse(BaseModel):
 class CreditHistoryEntryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: int
     turn_number: int
     delta: int
     reason: CreditHistoryReason

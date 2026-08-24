@@ -39,7 +39,10 @@ def make_service(
 ) -> CreditService:
     grade_repository = MagicMock()
     grade_repository.find_by_score.return_value = grade_policy
-    grade_repository.find_by_rank.return_value = next_grade_policy
+    grade_repository.find_all_ordered.return_value = sorted(
+        (g for g in (grade_policy, next_grade_policy) if g is not None),
+        key=lambda g: g.grade_rank,
+    )
 
     history_repository = MagicMock()
     history_repository.find_by_user_paginated.return_value = history or []
@@ -93,7 +96,7 @@ def test_get_score_raises_not_found_when_simulation_state_missing() -> None:
 
 def test_get_history_delegates_pagination_to_repository() -> None:
     state = make_state()
-    history = [CreditHistory(id=2, user_id=1, turn_number=3, delta=1, reason="loan_payment", score_after=71)]
+    history = [CreditHistory(id=7, user_id=1, turn_number=3, delta=1, reason="loan_payment", score_after=71)]
     service = make_service(state, make_grade_policy(), history=history)
 
     result = service.get_history(1, cursor=5, size=10)

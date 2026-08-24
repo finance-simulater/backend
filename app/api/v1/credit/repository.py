@@ -18,9 +18,6 @@ class CreditGradePolicyRepository:
     def find_all_ordered(self) -> list[CreditGradePolicy]:
         return self.db.query(CreditGradePolicy).order_by(CreditGradePolicy.grade_rank).all()
 
-    def find_by_rank(self, grade_rank: int) -> CreditGradePolicy | None:
-        return self.db.query(CreditGradePolicy).filter(CreditGradePolicy.grade_rank == grade_rank).first()
-
 
 def get_grade_policy_or_404(repository: CreditGradePolicyRepository, credit_score: int) -> CreditGradePolicy:
     grade_policy = repository.find_by_score(credit_score)

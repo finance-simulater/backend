@@ -26,8 +26,10 @@ class CreditService:
         simulation_state = get_simulation_state_or_404(self.simulation_repository, user_id)
         grade_policy = get_grade_policy_or_404(self.grade_repository, simulation_state.credit_score)
 
-        # grade_rank가 1(A+)에 가까울수록 좋은 등급 — 한 단계 낮은 rank가 다음 목표 등급
-        next_grade_policy = self.grade_repository.find_by_rank(grade_policy.grade_rank - 1)
+        # grade_rank가 1(A+)에 가까울수록 좋은 등급 — rank가 현재보다 낮은 등급 중 가장 가까운(rank가 가장 큰) 것이 다음 목표 등급.
+        # grade_rank - 1을 직접 조회하지 않는 이유: 향후 등급이 추가/삭제돼 rank에 공백이 생겨도 안전하게 동작하도록 하기 위함.
+        better_grades = [g for g in self.grade_repository.find_all_ordered() if g.grade_rank < grade_policy.grade_rank]
+        next_grade_policy = max(better_grades, key=lambda g: g.grade_rank, default=None)
 
         return CreditScoreResponse(
             score=simulation_state.credit_score,

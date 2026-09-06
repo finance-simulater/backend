@@ -34,3 +34,9 @@ class CreditHistoryRepository:
         self.db.add(credit_history)
         self.db.flush()
         return credit_history
+
+    def find_by_user_paginated(self, user_id: int, cursor: int | None, size: int) -> list[CreditHistory]:
+        query = self.db.query(CreditHistory).filter(CreditHistory.user_id == user_id)
+        if cursor is not None:
+            query = query.filter(CreditHistory.id < cursor)
+        return query.order_by(CreditHistory.id.desc()).limit(size).all()

@@ -24,8 +24,11 @@ def get_loan_service(db: Session = Depends(get_db)) -> LoanService:
 
 
 @router.get("/", response_model=list[LoanResponse])
-async def list_loans(service: LoanService = Depends(get_loan_service)):
-    return service.get_loans()
+async def list_loans(
+    current_user: User = Depends(get_current_user),
+    service: LoanService = Depends(get_loan_service),
+):
+    return service.get_loans(current_user.id)
 
 
 # /{loan_id} 패턴과 겹치지 않도록 정적 경로들을 먼저 등록한다.
@@ -69,10 +72,18 @@ async def apply_for_loan(
 
 
 @router.get("/{loan_id}", response_model=LoanResponse)
-async def get_loan(loan_id: int, service: LoanService = Depends(get_loan_service)):
-    return service.get_loan(loan_id)
+async def get_loan(
+    loan_id: int,
+    current_user: User = Depends(get_current_user),
+    service: LoanService = Depends(get_loan_service),
+):
+    return service.get_loan(current_user.id, loan_id)
 
 
 @router.get("/{loan_id}/schedule", response_model=list[RepaymentScheduleItem])
-async def get_loan_schedule(loan_id: int, service: LoanService = Depends(get_loan_service)):
-    return service.get_schedule(loan_id)
+async def get_loan_schedule(
+    loan_id: int,
+    current_user: User = Depends(get_current_user),
+    service: LoanService = Depends(get_loan_service),
+):
+    return service.get_schedule(current_user.id, loan_id)

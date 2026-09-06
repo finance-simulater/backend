@@ -7,8 +7,8 @@ class LoanRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def find_all(self) -> list[Loan]:
-        return self.db.query(Loan).order_by(Loan.id).all()
+    def find_all_by_user(self, user_id: int) -> list[Loan]:
+        return self.db.query(Loan).filter(Loan.user_id == user_id).order_by(Loan.id).all()
 
     def find_by_id(self, loan_id: int) -> Loan | None:
         return self.db.query(Loan).filter(Loan.id == loan_id).first()

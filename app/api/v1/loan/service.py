@@ -36,17 +36,18 @@ class LoanService:
         self.credit_repository = credit_repository or CreditGradePolicyRepository(db)
         self.simulation_repository = simulation_repository or SimulationStateRepository(db)
 
-    def get_loans(self) -> list[Loan]:
-        return self.repository.find_all()
+    def get_loans(self, user_id: int) -> list[Loan]:
+        return self.repository.find_all_by_user(user_id)
 
-    def get_loan(self, loan_id: int) -> Loan:
+    def get_loan(self, user_id: int, loan_id: int) -> Loan:
         loan = self.repository.find_by_id(loan_id)
-        if loan is None:
+        # 존재 여부로 타인의 대출을 추측할 수 없도록 소유자가 달라도 동일하게 404 처리한다.
+        if loan is None or loan.user_id != user_id:
             raise not_found("대출 정보를 찾을 수 없습니다")
         return loan
 
-    def get_schedule(self, loan_id: int) -> list[RepaymentSchedule]:
-        self.get_loan(loan_id)
+    def get_schedule(self, user_id: int, loan_id: int) -> list[RepaymentSchedule]:
+        self.get_loan(user_id, loan_id)
         return self.repository.find_schedule_by_loan(loan_id)
 
     def get_eligibility(self, user_id: int) -> LoanEligibilityResponse:

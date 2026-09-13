@@ -17,7 +17,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# config.attributes["sqlalchemy_url"]로 명시적으로 넘겨진 URL이 있으면 그것을 쓴다
+# (통합 테스트가 원격 settings.database_url을 실수로 건드리지 않게 하기 위함).
+config.set_main_option("sqlalchemy.url", config.attributes.get("sqlalchemy_url") or settings.database_url)
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

@@ -23,6 +23,13 @@ include = ["app*"]
 
 [dependency-groups]
 dev = [
+    "cryptography>=50.0.1",
     "httpx2>=2.0.0,<3.0.0",
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: 실제 MySQL에 붙는 repository 통합 테스트 (TEST_DATABASE_URL 필요)",
+]
+addopts = "-m 'not integration'"

@@ -16,6 +16,55 @@
 
 ---
 
+## [2026-09-13] docker-compose mysql로 통합 테스트 시 Access denied (#31)
+
+**증상**
+`tests/integration`의 `TEST_DATABASE_URL`로 호스트에서 `localhost:3306`에 접속하면
+`Access denied for user '<user>'@'localhost' (using password: YES)`. 그런데 같은
+계정/비밀번호로 `docker exec`해 컨테이너 안에서 접속하면 정상.
+
+**원인**
+- 로컬 `finance-mysql` 컨테이너의 MySQL 데이터 볼륨이 예전 `.env` 값으로 이미
+  초기화되어 있었음. `mysql:8.0` 공식 이미지는 `MYSQL_USER`/`MYSQL_PASSWORD`를
+  **최초 초기화 시에만** 반영하고, 이후 `.env`를 바꿔도 기존 볼륨의 계정 비밀번호는
+  그대로다 — 즉 `.env`와 실제 DB 비밀번호가 서로 다른 값이 됨.
+- 이와 별개로, 공식 이미지는 `MYSQL_USER`에게 `MYSQL_DATABASE`(예: `ssu_finance`)
+  권한만 자동으로 부여한다. 통합 테스트 전용 DB(`finance_test`)는 기본적으로 그
+  계정에 접근 권한이 없다.
+
+**해결**
+자격증명이 꼬였다면 컨테이너/볼륨을 재생성하거나 비밀번호를 맞춘다:
+```bash
+# 볼륨까지 초기화하고 .env 값으로 다시 생성 (기존 로컬 데이터는 사라짐)
+docker compose down -v && docker compose up -d mysql
+
+# 또는 기존 볼륨을 유지한 채 비밀번호만 .env 값에 맞춘다
+docker exec finance-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
+  ALTER USER '<MYSQL_USER>'@'%' IDENTIFIED BY '<MYSQL_PASSWORD>';
+  FLUSH PRIVILEGES;"
+```
+`finance_test` 권한은 (볼륨을 재생성하지 않는 한) 한 번만 부여하면 된다:
+```bash
+docker exec finance-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
+  CREATE DATABASE IF NOT EXISTS finance_test;
+  GRANT ALL PRIVILEGES ON finance_test.* TO '<MYSQL_USER>'@'%';
+  FLUSH PRIVILEGES;"
+```
+`tests/integration/conftest.py`의 `mysql_engine` fixture는 `CREATE DATABASE IF NOT
+EXISTS`까지는 자동으로 하지만, 최소 권한 원칙상 GRANT는 실행하지 않는다 — 위 명령을
+로컬에서 한 번 실행해줘야 한다.
+
+**교훈**
+- 로컬 docker-compose MySQL은 데이터 볼륨이 **최초 초기화 시점**의 계정/비밀번호를
+  그대로 유지한다. `.env`만 바꿨는데 접속이 안 되면 볼륨의 stale한 자격증명부터
+  의심한다.
+- 통합 테스트처럼 별도 DB를 새로 쓸 땐, 애플리케이션 계정에 그 DB에 대한 권한이
+  자동으로 없다는 점을 기억하고 한 번은 수동 GRANT가 필요하다.
+
+**관련**: `tests/integration/conftest.py`, `docker-compose.yml`, #31
+
+---
+
 ## [2026-08-01] 매수/매도 동시 요청 시 잔액 음수·초과 매도 (#11)
 
 **증상**

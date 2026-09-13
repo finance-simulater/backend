@@ -7,7 +7,9 @@
 
 주의: `app.core.config.settings.database_url`은 절대 사용하지 않는다 — 이 값은
 개발 환경에서 원격 RDS를 가리킬 수 있어, 실수로 실제 DB에 테스트가 붙는 사고를
-막기 위해 통합 테스트 전용 `TEST_DATABASE_URL` 환경변수만 사용한다.
+막기 위해 `.env`의 docker-compose mysql 값(MYSQL_USER 등)으로 직접 조합한 URL만
+사용한다. `TEST_DATABASE_URL`을 명시하면 그 값이 우선한다(다른 호스트/포트를
+쓰고 싶을 때의 탈출구).
 """
 
 import os
@@ -17,6 +19,7 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 from alembic import command
 from alembic.config import Config
+from dotenv import dotenv_values
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
@@ -26,16 +29,23 @@ BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 
 
 def _test_database_url() -> str:
-    url = os.environ.get("TEST_DATABASE_URL")
-    if not url:
+    explicit_url = os.environ.get("TEST_DATABASE_URL")
+    if explicit_url:
+        return explicit_url
+
+    # .env의 docker-compose mysql 설정(MYSQL_USER 등)을 그대로 재사용해 조합한다.
+    env_values = {**dotenv_values(os.path.join(BACKEND_ROOT, ".env")), **os.environ}
+    user = env_values.get("MYSQL_USER")
+    password = env_values.get("MYSQL_PASSWORD")
+    if not user or not password:
         raise RuntimeError(
-            "TEST_DATABASE_URL 환경변수가 설정되지 않았습니다. "
-            "통합 테스트는 settings.database_url을 사용하지 않습니다 "
-            "(원격 DB 오염 방지). docker-compose mysql을 띄운 뒤 "
-            "TEST_DATABASE_URL=mysql+pymysql://<MYSQL_USER>:<MYSQL_PASSWORD>@localhost:<MYSQL_PORT>/<MYSQL_DATABASE> "
-            "형태로, .env의 docker-compose mysql 값 그대로 지정하세요."
+            "MYSQL_USER/MYSQL_PASSWORD가 .env에 없습니다. docker-compose mysql용 값을 "
+            "설정하거나, 직접 TEST_DATABASE_URL=mysql+pymysql://<user>:<password>@localhost:"
+            "<port>/<database> 를 지정하세요."
         )
-    return url
+    port = env_values.get("MYSQL_PORT", "3306")
+    database = env_values.get("MYSQL_DATABASE", "finance")
+    return f"mysql+pymysql://{user}:{password}@localhost:{port}/{database}"
 
 
 def _create_database_if_missing(database_url: str) -> None:

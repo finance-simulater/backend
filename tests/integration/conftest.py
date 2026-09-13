@@ -1,4 +1,4 @@
-"""Repository 통합 테스트 인프라 (finance-simulater/backend#31).
+"""Repository 통합 테스트 인프라
 
 실제 MySQL(docker-compose의 mysql 서비스)에 붙어 alembic 마이그레이션으로
 스키마를 구성하고, 테스트마다 트랜잭션을 롤백해 상태를 격리한다. 테스트마다
@@ -8,8 +8,7 @@
 주의: `app.core.config.settings.database_url`은 절대 사용하지 않는다 — 이 값은
 개발 환경에서 원격 RDS를 가리킬 수 있어, 실수로 실제 DB에 테스트가 붙는 사고를
 막기 위해 `.env`의 docker-compose mysql 값(MYSQL_USER 등)으로 직접 조합한 URL만
-사용한다. `TEST_DATABASE_URL`을 명시하면 그 값이 우선한다(다른 호스트/포트를
-쓰고 싶을 때의 탈출구).
+사용한다.
 """
 
 import os
@@ -29,10 +28,6 @@ BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 
 
 def _test_database_url() -> str:
-    explicit_url = os.environ.get("TEST_DATABASE_URL")
-    if explicit_url:
-        return explicit_url
-
     # .env의 docker-compose mysql 설정(MYSQL_USER 등)을 그대로 재사용해 조합한다.
     env_values = {**dotenv_values(os.path.join(BACKEND_ROOT, ".env")), **os.environ}
     user = env_values.get("MYSQL_USER")
@@ -40,8 +35,7 @@ def _test_database_url() -> str:
     if not user or not password:
         raise RuntimeError(
             "MYSQL_USER/MYSQL_PASSWORD가 .env에 없습니다. docker-compose mysql용 값을 "
-            "설정하거나, 직접 TEST_DATABASE_URL=mysql+pymysql://<user>:<password>@localhost:"
-            "<port>/<database> 를 지정하세요."
+            "먼저 설정하세요."
         )
     port = env_values.get("MYSQL_PORT", "3306")
     database = env_values.get("MYSQL_DATABASE", "finance")

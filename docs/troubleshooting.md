@@ -19,47 +19,43 @@
 ## [2026-09-13] docker-compose mysql로 통합 테스트 시 Access denied (#31)
 
 **증상**
-`tests/integration`의 `TEST_DATABASE_URL`로 호스트에서 `localhost:3306`에 접속하면
+`tests/integration`으로 호스트에서 `localhost:3306`에 접속하면
 `Access denied for user '<user>'@'localhost' (using password: YES)`. 그런데 같은
 계정/비밀번호로 `docker exec`해 컨테이너 안에서 접속하면 정상.
 
 **원인**
-- 로컬 `finance-mysql` 컨테이너의 MySQL 데이터 볼륨이 예전 `.env` 값으로 이미
-  초기화되어 있었음. `mysql:8.0` 공식 이미지는 `MYSQL_USER`/`MYSQL_PASSWORD`를
-  **최초 초기화 시에만** 반영하고, 이후 `.env`를 바꿔도 기존 볼륨의 계정 비밀번호는
-  그대로다 — 즉 `.env`와 실제 DB 비밀번호가 서로 다른 값이 됨.
-- 이와 별개로, 공식 이미지는 `MYSQL_USER`에게 `MYSQL_DATABASE`(예: `ssu_finance`)
-  권한만 자동으로 부여한다. 통합 테스트 전용 DB(`finance_test`)는 기본적으로 그
-  계정에 접근 권한이 없다.
+docker 문제가 아니라, 맥에 **네이티브로 설치된 MySQL**(Oracle 공식 설치 패키지,
+`/usr/local/mysql/bin/mysqld`, launchd 데몬 `com.oracle.oss.mysql.mysqld`)이 호스트의
+3306 포트를 이미 점유하고 있었다. `localhost:3306`으로 접속하면 docker-compose
+컨테이너가 아니라 이 네이티브 mysqld로 연결되었고, 그쪽엔 `ssu_finance_user` 계정이
+없으니 당연히 거부된 것. `docker exec`는 컨테이너 안에서 직접 접속하므로 이 문제를
+우회해 항상 정상으로 보였다. (`docker compose up`은 이미 실행 중이던 컨테이너를 그냥
+"Running"으로 보고했을 뿐, 실제 포트 바인딩 충돌은 컨테이너를 새로 띄우거나
+`--force-recreate` 할 때만 명시적 에러로 드러났다.)
 
 **해결**
-자격증명이 꼬였다면 컨테이너/볼륨을 재생성하거나 비밀번호를 맞춘다:
-```bash
-# 볼륨까지 초기화하고 .env 값으로 다시 생성 (기존 로컬 데이터는 사라짐)
-docker compose down -v && docker compose up -d mysql
-
-# 또는 기존 볼륨을 유지한 채 비밀번호만 .env 값에 맞춘다
-docker exec finance-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
-  ALTER USER '<MYSQL_USER>'@'%' IDENTIFIED BY '<MYSQL_PASSWORD>';
-  FLUSH PRIVILEGES;"
-```
-`finance_test` 권한은 (볼륨을 재생성하지 않는 한) 한 번만 부여하면 된다:
-```bash
-docker exec finance-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
-  CREATE DATABASE IF NOT EXISTS finance_test;
-  GRANT ALL PRIVILEGES ON finance_test.* TO '<MYSQL_USER>'@'%';
-  FLUSH PRIVILEGES;"
-```
-`tests/integration/conftest.py`의 `mysql_engine` fixture는 `CREATE DATABASE IF NOT
-EXISTS`까지는 자동으로 하지만, 최소 권한 원칙상 GRANT는 실행하지 않는다 — 위 명령을
-로컬에서 한 번 실행해줘야 한다.
+1. 포트 충돌 확인: `lsof -nP -iTCP:3306 -sTCP:LISTEN` 또는 `ps aux | grep mysqld`로
+   docker가 아닌 다른 mysqld가 떠 있는지 확인한다.
+2. 네이티브 mysqld를 쓸 일이 없다면 중지한다(관리자 암호 필요):
+   ```bash
+   sudo launchctl bootout system/com.oracle.oss.mysql.mysqld
+   # 재부팅 시 자동 시작도 막으려면
+   sudo launchctl disable system/com.oracle.oss.mysql.mysqld
+   ```
+   네이티브 mysql을 다른 용도로 계속 써야 한다면, 대신 `.env`의 `MYSQL_PORT`를
+   3307 등 다른 포트로 바꾼다(`tests/integration`은 `.env`의 `MYSQL_PORT`를
+   그대로 읽으므로 추가 설정 없이 따라간다).
 
 **교훈**
-- 로컬 docker-compose MySQL은 데이터 볼륨이 **최초 초기화 시점**의 계정/비밀번호를
-  그대로 유지한다. `.env`만 바꿨는데 접속이 안 되면 볼륨의 stale한 자격증명부터
-  의심한다.
-- 통합 테스트처럼 별도 DB를 새로 쓸 땐, 애플리케이션 계정에 그 DB에 대한 권한이
-  자동으로 없다는 점을 기억하고 한 번은 수동 GRANT가 필요하다.
+- 로컬에서 "docker mysql인데 계정이 안 맞는다"는 증상이 나오면, 진짜 그 컨테이너에
+  붙고 있는 게 맞는지부터 의심한다 — 호스트에 같은 포트를 쓰는 네이티브 서비스가
+  떠 있으면 `docker exec`로만 확인해선 절대 못 잡는다.
+- `docker compose up`이 "Running"이라고 보고해도, 그게 실제로 해당 포트를 점유하고
+  있다는 보장은 아니다. 포트 충돌은 재생성(`--force-recreate`)하거나 새로 `up` 할
+  때만 명시적으로 드러난다.
+- `tests/integration`은 별도 DB를 만들지 않고 docker-compose의 `MYSQL_DATABASE`를
+  그대로 재사용한다(테스트마다 트랜잭션을 롤백하므로 안전) — 그래서 GRANT나
+  `TEST_DATABASE_URL` 같은 추가 설정 없이 `.env`의 docker-compose 값만으로 동작한다.
 
 **관련**: `tests/integration/conftest.py`, `docker-compose.yml`, #31
 

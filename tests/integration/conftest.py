@@ -13,7 +13,7 @@
 
 import os
 from collections.abc import Generator
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote_plus, urlsplit, urlunsplit
 
 import pytest
 from alembic import command
@@ -39,7 +39,7 @@ def _test_database_url() -> str:
         )
     port = env_values.get("MYSQL_PORT", "3306")
     database = env_values.get("MYSQL_DATABASE", "finance")
-    return f"mysql+pymysql://{user}:{password}@localhost:{port}/{database}"
+    return f"mysql+pymysql://{quote_plus(user)}:{quote_plus(password)}@localhost:{port}/{database}"
 
 
 def _create_database_if_missing(database_url: str) -> None:

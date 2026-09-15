@@ -1,6 +1,7 @@
 """UserRepository 통합 테스트"""
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.api.v1.user.model import User
 from app.api.v1.user.repository import UserRepository
@@ -58,5 +59,5 @@ def test_create_raises_on_duplicate_email(db_session):
         monthly_salary=1_000_000,
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         repository.create(user_create, password_hash="hashed")

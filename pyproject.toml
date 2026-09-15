@@ -30,6 +30,6 @@ dev = [
 
 [tool.pytest.ini_options]
 markers = [
-    "integration: 실제 MySQL에 붙는 repository 통합 테스트 (TEST_DATABASE_URL 필요)",
+    "integration: 실제 MySQL에 붙는 repository 통합 테스트",
 ]
 addopts = "-m 'not integration'"

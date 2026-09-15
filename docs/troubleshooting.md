@@ -16,47 +16,6 @@
 
 ---
 
-## [2026-09-15] PR #35 코드 리뷰로 드러난 통합 테스트 코드 이슈 3건 (#31)
-
-**증상**
-`tests/integration` PR(#35) 리뷰에서 실제 동작에 영향을 주는 문제 3건이 지적됨.
-
-**원인**
-- `pyproject.toml`의 `integration` 마커 설명이 옛 설계(`TEST_DATABASE_URL` 필수)를
-  그대로 언급하고 있었음. 실제로는 앞선 리팩토링(`1d6b123`)에서 `.env`의
-  `MYSQL_USER` 등으로 자동 조합하도록 바뀌어서 설명과 동작이 어긋나 있었음.
-- `tests/integration/test_user_repository.py`의 중복 이메일 테스트가
-  `pytest.raises(Exception)`으로 너무 넓게 잡고 있었음 — 의도한
-  `IntegrityError`(unique 제약 위반) 대신 다른 원인의 버그(예: `AttributeError`)도
-  테스트를 통과시켜버려 회귀 탐지력이 떨어짐.
-- `tests/integration/conftest.py`의 `_test_database_url()`이 `MYSQL_USER`/
-  `MYSQL_PASSWORD`를 URL 인코딩 없이 f-string으로 바로 조합함 — 비밀번호에
-  `@`, `:`, `/`, `#` 같은 URL 특수문자가 들어있으면 URL 파싱이 깨짐.
-
-**해결**
-- 마커 설명에서 `TEST_DATABASE_URL` 언급 제거.
-- `pytest.raises(Exception)` → `pytest.raises(sqlalchemy.exc.IntegrityError)`로 구체화.
-- `urllib.parse.quote_plus`로 `MYSQL_USER`/`MYSQL_PASSWORD`를 감싸 URL 조합:
-  ```python
-  from urllib.parse import quote_plus
-  return f"mysql+pymysql://{quote_plus(user)}:{quote_plus(password)}@localhost:{port}/{database}"
-  ```
-
-**교훈**
-- 설계를 리팩토링할 때 관련 문구(마커 설명, docstring, `.env.example` 주석 등)를
-  같이 훑는 체크리스트가 필요하다 — 동작과 문서/문구가 어긋나면 다음 사람이
-  틀린 전제로 디버깅을 시작하게 된다.
-- `pytest.raises`는 가능하면 구체적인 예외 타입으로 좁힌다. `Exception`으로 잡으면
-  "의도한 실패"와 "숨은 버그로 인한 실패"를 구분하지 못한다.
-- 사용자 입력(비밀번호 등)으로 URL을 직접 조합할 때는 항상 `quote_plus`/`urlencode`
-  등으로 이스케이프한다. 테스트/로컬 값이 단순해서 지금 당장은 안 터지더라도,
-  나중에 특수문자가 섞인 값으로 바꾸는 순간 원인 파악이 까다로운 파싱 에러로 돌아온다.
-
-**관련**: `pyproject.toml`, `tests/integration/conftest.py`,
-`tests/integration/test_user_repository.py`, PR #35, 커밋 `fc1ab72`, #31
-
----
-
 ## [2026-09-13] docker-compose mysql로 통합 테스트 시 Access denied (#31)
 
 **증상**

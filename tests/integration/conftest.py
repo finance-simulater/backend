@@ -94,8 +94,19 @@ def db_session(mysql_engine: Engine) -> Generator[Session, None, None]:
 
 
 # 사용자별로 실제 커밋된 데이터를 남기는 테이블. FK 의존 순서(자식 -> 부모)대로 정리한다.
+# 주의: users.id를 참조하는 테이블을 새로 추가하면(모델에 ForeignKey("users.id") 추가) 여기에도
+# 반드시 같이 추가할 것 — 빠뜨리면 그 테이블에 데이터를 남기는 테스트에서 DELETE FROM users가
+# FK 위반으로 실패한다.
 _USER_OWNED_TABLES_BY_LOAN = ["repayment_schedule"]
-_USER_OWNED_TABLES = ["loans", "turns", "expenses", "credit_history", "simulation_state"]
+_USER_OWNED_TABLES = [
+    "loans",
+    "turns",
+    "expenses",
+    "credit_history",
+    "fixed_expenses",
+    "stock_holdings",
+    "simulation_state",
+]
 
 
 def _cleanup_real_users(engine: Engine, user_ids: list[int]) -> None:

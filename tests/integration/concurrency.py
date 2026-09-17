@@ -35,4 +35,7 @@ def run_concurrently(*fns: Callable[[], T]) -> list[T | Exception]:
         thread.start()
     for thread in threads:
         thread.join()
-    return results
+    # 각 스레드가 자기 인덱스를 반드시 덮어쓰므로 이 시점엔 None이 남아있지 않다 —
+    # 반환 타입(list[T | Exception])과 results의 선언 타입을 일치시킨다.
+    assert None not in results
+    return results  # type: ignore[return-value]

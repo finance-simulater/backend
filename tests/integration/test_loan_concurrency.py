@@ -66,7 +66,9 @@ def test_apply_for_loan_concurrent_requests_only_one_becomes_active(real_session
     # 현재는 이 제약 위반이 409(LOAN_ALREADY_ACTIVE)가 아니라 IntegrityError로 그대로
     # 샌다. 서비스 레이어에서 잡아 conflict()로 변환하도록 고치면 이 assert와 아래
     # 모듈 docstring을 함께 업데이트할 것 (#36 참고).
-    assert isinstance(failures[0], IntegrityError)
+    # 실패 원인이 IntegrityError가 아니면(예: rendezvous barrier 타임아웃으로 인한
+    # BrokenBarrierError) 그 예외를 그대로 assert 메시지에 남겨 디버깅을 돕는다.
+    assert isinstance(failures[0], IntegrityError), failures[0]
 
     verify_session = session_factory()
     try:

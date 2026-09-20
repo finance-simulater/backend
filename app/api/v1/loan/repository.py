@@ -48,11 +48,15 @@ class LoanRepository:
         return loan
 
     def create_with_schedule(self, loan: Loan, schedule: list[RepaymentSchedule]) -> Loan:
-        self.db.add(loan)
-        self.db.flush()
-        for installment in schedule:
-            installment.loan_id = loan.id
-        self.db.add_all(schedule)
-        self.db.commit()
+        try:
+            self.db.add(loan)
+            self.db.flush()
+            for installment in schedule:
+                installment.loan_id = loan.id
+            self.db.add_all(schedule)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         self.db.refresh(loan)
         return loan

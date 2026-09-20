@@ -1,5 +1,6 @@
 from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.v1.credit.repository import CreditGradePolicyRepository, get_grade_policy_or_404
@@ -130,7 +131,15 @@ class LoanService:
             )
             for installment_number in range(1, duration_months + 1)
         ]
-        return self.repository.create_with_schedule(loan, schedule)
+        try:
+            return self.repository.create_with_schedule(loan, schedule)
+        except IntegrityError as exc:
+            # 활성 대출 존재 여부 체크와 생성 사이에 락이 없어, 동시 신청 시 DB의
+            # uq_loans_one_active_per_user 제약 위반으로 여기에 도달할 수 있다.
+            # 레이스에서 진 요청도 500이 아닌 기존 409 응답과 동일하게 변환한다.
+            raise conflict(
+                "이미 진행 중인 대출이 있어 신규 신청이 불가합니다", code="LOAN_ALREADY_ACTIVE"
+            ) from exc
 
     @staticmethod
     def _resolve_interest_rate(base_rate: Decimal, duration_months: int) -> Decimal:

@@ -1,9 +1,10 @@
 from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.v1.credit.repository import CreditGradePolicyRepository, get_grade_policy_or_404
-from app.api.v1.loan.model import Loan, RepaymentSchedule
+from app.api.v1.loan.model import ACTIVE_LOAN_UNIQUE_CONSTRAINT, Loan, RepaymentSchedule
 from app.api.v1.loan.repository import LoanRepository
 from app.api.v1.loan.schema import (
     GradeOption,
@@ -22,6 +23,23 @@ DURATION_RATE_ADJUSTMENT: dict[int, Decimal] = {
     6: Decimal("0.0"),
     12: Decimal("2.0"),
 }
+
+
+def _active_loan_conflict() -> Exception:
+    return conflict("이미 진행 중인 대출이 있어 신규 신청이 불가합니다", code="LOAN_ALREADY_ACTIVE")
+
+
+def _is_active_loan_unique_violation(exc: IntegrityError) -> bool:
+    """DB 드라이버(pymysql) 기준으로, 위반된 제약이 활성 대출 unique 제약인지 확인한다.
+
+    스키마 변경으로 이 경로에 다른 제약(FK, NOT NULL 등)이 추가될 수 있으므로,
+    무관한 IntegrityError까지 같은 409로 감추지 않도록 errno와 제약 이름을 모두 확인한다.
+    """
+    orig = exc.orig
+    if orig is None or len(orig.args) < 2:
+        return False
+    errno, message = orig.args[0], orig.args[1]
+    return errno == 1062 and ACTIVE_LOAN_UNIQUE_CONSTRAINT in str(message)
 
 
 class LoanService:
@@ -92,7 +110,7 @@ class LoanService:
 
     def apply_for_loan(self, user_id: int, principal: int, duration_months: int) -> Loan:
         if self.repository.find_active_by_user(user_id) is not None:
-            raise conflict("이미 진행 중인 대출이 있어 신규 신청이 불가합니다", code="LOAN_ALREADY_ACTIVE")
+            raise _active_loan_conflict()
 
         simulation_state = get_simulation_state_or_404(self.simulation_repository, user_id)
         grade_policy = get_grade_policy_or_404(self.credit_repository, simulation_state.credit_score)
@@ -130,7 +148,18 @@ class LoanService:
             )
             for installment_number in range(1, duration_months + 1)
         ]
-        return self.repository.create_with_schedule(loan, schedule)
+        try:
+            return self.repository.create_with_schedule(loan, schedule)
+        except IntegrityError as exc:
+            # 활성 대출 존재 여부 체크와 생성 사이에 락이 없어, 동시 신청 시 DB의
+            # 활성 대출 unique 제약 위반으로 여기에 도달할 수 있다. 레이스에서 진
+            # 요청도 500이 아닌 기존 409 응답과 동일하게 변환한다. 다른 원인의
+            # IntegrityError(예: 스키마 변경으로 추가된 제약)까지 같은 409로
+            # 감추지 않도록, 위반된 제약을 확인한 경우에만 변환하고 그 외에는
+            # 그대로 재raise해 500으로 노출시킨다.
+            if not _is_active_loan_unique_violation(exc):
+                raise
+            raise _active_loan_conflict() from exc
 
     @staticmethod
     def _resolve_interest_rate(base_rate: Decimal, duration_months: int) -> Decimal:

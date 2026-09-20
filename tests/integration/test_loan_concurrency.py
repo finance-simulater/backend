@@ -3,18 +3,17 @@
 `apply_for_loan`은 "활성 대출 존재 여부 체크 -> 생성" 사이에 애플리케이션
 레벨 락이 없다. DB의 `uq_loans_one_active_per_user` unique 제약(활성 대출일 때만
 값을 갖는 computed column)이 최종 방어선 역할을 하므로, 동시에 신청해도 활성
-대출이 2건 이상 생기지는 않는다. 다만 그 제약 위반(IntegrityError)을 서비스
-레이어가 잡아 409로 변환하지 않는다는 점은 이 테스트로 고정해두고, 별도 버그
-이슈로 분리한다 (finance-simulater/backend#36).
+대출이 2건 이상 생기지는 않는다. 그 제약 위반(IntegrityError)은 서비스 레이어가
+잡아 기존과 동일한 409(`LOAN_ALREADY_ACTIVE`) 응답으로 변환한다.
 """
 
 import threading
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 
 from app.api.v1.loan.repository import LoanRepository
 from app.api.v1.loan.service import LoanService
+from app.core.exceptions import AppHTTPException
 from tests.integration.concurrency import run_concurrently
 from tests.integration.factories import make_simulation_state, make_user
 
@@ -63,12 +62,13 @@ def test_apply_for_loan_concurrent_requests_only_one_becomes_active(real_session
     # DB unique 제약이 최종 방어선 역할을 해 활성 대출은 정확히 1건만 생성된다.
     assert len(successes) == 1
     assert len(failures) == 1
-    # 현재는 이 제약 위반이 409(LOAN_ALREADY_ACTIVE)가 아니라 IntegrityError로 그대로
-    # 샌다. 서비스 레이어에서 잡아 conflict()로 변환하도록 고치면 이 assert와 아래
-    # 모듈 docstring을 함께 업데이트할 것 (#36 참고).
-    # 실패 원인이 IntegrityError가 아니면(예: rendezvous barrier 타임아웃으로 인한
-    # BrokenBarrierError) 그 예외를 그대로 assert 메시지에 남겨 디버깅을 돕는다.
-    assert isinstance(failures[0], IntegrityError), failures[0]
+    # 레이스에서 진 요청은 IntegrityError가 아니라 서비스 레이어가 변환한 409를 받는다.
+    # 실패 원인이 다르면(예: rendezvous barrier 타임아웃으로 인한 BrokenBarrierError)
+    # 그 예외를 그대로 assert 메시지에 남겨 디버깅을 돕는다.
+    failure = failures[0]
+    assert isinstance(failure, AppHTTPException), failure
+    assert failure.status_code == 409
+    assert failure.code == "LOAN_ALREADY_ACTIVE"
 
     verify_session = session_factory()
     try:

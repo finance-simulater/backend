@@ -15,10 +15,14 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
+# 유저당 활성 대출을 최대 1건으로 강제하는 unique 제약 이름.
+# LoanService에서 이 제약 위반(IntegrityError)만 골라 409로 변환하는 데 사용한다.
+ACTIVE_LOAN_UNIQUE_CONSTRAINT = "uq_loans_one_active_per_user"
+
 
 class Loan(Base):
     __tablename__ = "loans"
-    __table_args__ = (UniqueConstraint("active_user_id", name="uq_loans_one_active_per_user"),)
+    __table_args__ = (UniqueConstraint("active_user_id", name=ACTIVE_LOAN_UNIQUE_CONSTRAINT),)
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)

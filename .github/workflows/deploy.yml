@@ -10,6 +10,7 @@ jobs:
   test:
     name: Test
     uses: ./.github/workflows/test.yml
+    secrets: inherit  # test.yml의 spec checkout이 SPEC_DEPLOY_KEY를 쓴다
 
   deploy:
     name: Deploy

@@ -50,6 +50,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # spec 레포가 private이라 submodules: true로는 받을 수 없다(GITHUB_TOKEN은 이 레포 권한만 있음).
+      # spec 읽기 전용 deploy key로 서브모듈 포인터가 가리키는 커밋을 직접 checkout한다.
+      # 포인터가 원격에 없는 커밋이면 여기서 실패하므로 잘못된 포인터가 main에 들어오는 것도 막는다.
+      - name: Resolve spec submodule commit
+        id: spec
+        run: echo "sha=$(git rev-parse HEAD:spec)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout spec submodule
+        uses: actions/checkout@v4
+        with:
+          repository: finance-simulater/spec
+          ref: ${{ steps.spec.outputs.sha }}
+          path: spec
+          ssh-key: ${{ secrets.SPEC_DEPLOY_KEY }}
+
       - name: Install uv
         uses: astral-sh/setup-uv@v10.1.0
         with:

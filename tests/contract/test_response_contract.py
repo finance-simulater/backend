@@ -280,6 +280,21 @@ def test_get_credit_score(client: TestClient, openapi_spec: SpecDict) -> None:
     assert_response_matches_spec(openapi_spec, response, "/api/v1/credit", "get")
 
 
+def test_get_credit_score_top_grade_has_no_next_grade(client: TestClient, openapi_spec: SpecDict) -> None:
+    # 최고 등급(A+)은 다음 등급이 없어 next_grade·score_to_next_grade가 null (spec#10에서 nullable 명시)
+    top_grade = make_grade_policy(grade="A+", grade_rank=1, min_score=95, max_score=100)
+    grade_repository = MagicMock()
+    grade_repository.find_by_score.return_value = top_grade
+    grade_repository.find_all_ordered.return_value = [top_grade]
+    _override_credit(make_state(credit_score=97), grade_repository=grade_repository)
+
+    response = client.get("/api/v1/credit")
+
+    assert response.status_code == 200
+    assert response.json()["next_grade"] is None
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/credit", "get")
+
+
 def test_get_credit_score_not_found(client: TestClient, openapi_spec: SpecDict) -> None:
     _override_credit(None)
 

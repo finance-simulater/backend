@@ -23,8 +23,9 @@ def _openapi_to_json_schema(node: Any) -> Any:
     """OpenAPI 3.0 고유 키워드를 jsonschema가 이해하는 형태로 변환한다.
 
     jsonschema는 `nullable: true`(JSON Schema엔 없는 OpenAPI 3.0 전용 키워드)를 모르기 때문에
-    그대로 두면 null 값이 type 위반으로 잡힌다. `$ref`와 함께 쓰인 경우는 형제 키워드가
-    무시될 수 있어 anyOf로 풀어준다.
+    그대로 두면 null 값이 type 위반으로 잡힌다. 스키마 전체를 `anyOf: [원래 스키마, null]`로 감싸
+    `type`·`$ref`·`allOf`(OpenAPI 3.0에서 $ref에 nullable을 붙이는 방식)·`enum` 어느 형태든
+    null을 허용한다 — `type`만 `[type, "null"]`로 바꾸면 `enum`·`allOf`가 여전히 null을 거부한다.
     """
     if isinstance(node, list):
         return [_openapi_to_json_schema(item) for item in node]
@@ -33,10 +34,7 @@ def _openapi_to_json_schema(node: Any) -> Any:
 
     converted = {key: _openapi_to_json_schema(value) for key, value in node.items() if key != "nullable"}
     if node.get("nullable"):
-        if "$ref" in converted:
-            converted["anyOf"] = [{"$ref": converted.pop("$ref")}, {"type": "null"}]
-        elif "type" in converted:
-            converted["type"] = [converted["type"], "null"]
+        return {"anyOf": [converted, {"type": "null"}]}
     return converted
 
 

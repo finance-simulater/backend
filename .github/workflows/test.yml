@@ -64,6 +64,8 @@ jobs:
           ref: ${{ steps.spec.outputs.sha }}
           path: spec
           ssh-key: ${{ secrets.SPEC_DEPLOY_KEY }}
+          # 이후 단계에서 spec에 git 작업을 하지 않으므로 키를 git 설정에 남기지 않는다.
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.1.0

@@ -25,11 +25,14 @@ include = ["app*"]
 dev = [
     "cryptography>=50.0.1",
     "httpx2>=2.0.0,<3.0.0",
+    "jsonschema>=4.26.0",
     "pytest>=9.1.1",
+    "pyyaml>=6.0.3",
 ]
 
 [tool.pytest.ini_options]
 markers = [
     "integration: 실제 MySQL에 붙는 repository 통합 테스트",
+    "contract: openapi.yaml(spec 서브모듈) ↔ 실제 API 라우트/응답 계약 테스트",
 ]
 addopts = "-m 'not integration'"

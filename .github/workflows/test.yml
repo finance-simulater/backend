@@ -51,21 +51,32 @@ jobs:
         uses: actions/checkout@v4
 
       # spec 레포가 private이라 submodules: true로는 받을 수 없다(GITHUB_TOKEN은 이 레포 권한만 있음).
-      # spec 읽기 전용 deploy key로 서브모듈 포인터가 가리키는 커밋을 직접 checkout한다.
-      # 포인터가 원격에 없는 커밋이면 여기서 실패하므로 잘못된 포인터가 main에 들어오는 것도 막는다.
-      - name: Resolve spec submodule commit
-        id: spec
-        run: echo "sha=$(git rev-parse HEAD:spec)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout spec submodule
+      # spec 읽기 전용 deploy key로 main을 히스토리 전체(fetch-depth: 0)와 함께 받는다 — 포인터 검사에
+      # origin/main과 조상 관계가 필요하고, 포인터 커밋으로의 전환은 그 뒤 로컬에서 한다.
+      - name: Checkout spec
         uses: actions/checkout@v4
         with:
           repository: finance-simulater/spec
-          ref: ${{ steps.spec.outputs.sha }}
+          ref: main
+          fetch-depth: 0
           path: spec
           ssh-key: ${{ secrets.SPEC_DEPLOY_KEY }}
-          # 이후 단계에서 spec에 git 작업을 하지 않으므로 키를 git 설정에 남기지 않는다.
+          # 이후 단계에서 spec을 원격에서 다시 받지 않으므로 키를 git 설정에 남기지 않는다.
           persist-credentials: false
+
+      # PR merge 결과의 포인터가 spec main에 있는 커밋이고 base 포인터보다 앞서 있는지 검사한다 (#41).
+      # workflow_call(deploy)은 caller 이벤트(push)를 그대로 받으므로 여기서 건너뛴다.
+      - name: Check spec submodule pointer
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          sh scripts/check_spec_pointer.sh "$(git rev-parse "$BASE_SHA:spec")" "$(git rev-parse HEAD:spec)" spec
+
+      # 포인터가 spec main에 없는 커밋이면 여기서 실패한다(PR에선 위 검사가 먼저 원인을 알려준다).
+      - name: Switch spec to submodule pointer
+        run: git -C spec checkout --quiet --detach "$(git rev-parse HEAD:spec)"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.1.0

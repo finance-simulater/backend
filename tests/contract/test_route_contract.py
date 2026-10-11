@@ -48,7 +48,9 @@ def _app_routes() -> set[tuple[str, str]]:
     app.routes를 직접 읽지 않는 이유: include_router가 지연 적용돼(FastAPI 0.138의
     _IncludedRouter) 요청 전에는 APIRoute가 펼쳐지지 않는다. app.openapi()는 등록된
     라우트에서 생성되므로 내부 구조에 의존하지 않고 같은 정보를 얻을 수 있다.
-    /docs·/redoc·/openapi.json은 include_in_schema=False라 여기에 포함되지 않는다.
+    /docs·/redoc·/openapi.json은 include_in_schema=False라 여기에 포함되지 않는다. 같은 이유로
+    앱 라우트에 include_in_schema=False를 주면 허용 목록 검증에서도 빠진다(의도된 동작 — 스키마에
+    노출하지 않는 내부용 라우트는 스펙 대상이 아니다).
     """
     return {
         (path, method)

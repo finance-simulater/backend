@@ -3,6 +3,9 @@
 기존 라우터 테스트(tests/test_credit_router.py 등)와 같은 TestClient + dependency_overrides 목 패턴을
 쓰되, 필드값을 손으로 단언하지 않고 assert_response_matches_spec으로 스펙에서 유도한 스키마에 대조한다.
 리스트 응답은 빈 배열이면 items 스키마가 검증되지 않으므로 항상 1건 이상 채워서 호출한다.
+
+주의: `created_at`은 tz-aware(UTC)로 만들어 `...Z`로 직렬화되지만, 실제 DB(MySQL DATETIME)는 naive 값을
+돌려줘 오프셋 없이 직렬화된다 — 테스트 데이터가 실제보다 깨끗하다. #43에서 앱 수정과 함께 naive로 바꾼다.
 """
 
 from datetime import datetime, timezone
@@ -281,7 +284,7 @@ def test_get_credit_score(client: TestClient, openapi_spec: SpecDict) -> None:
 
 
 def test_get_credit_score_top_grade_has_no_next_grade(client: TestClient, openapi_spec: SpecDict) -> None:
-    # 최고 등급(A+)은 다음 등급이 없어 next_grade·score_to_next_grade가 null (spec#10에서 nullable 명시)
+    # 최고 등급(A+)은 다음 등급이 없어 next_grade·score_to_next_grade가 null (spec#10, PR #11 / v0.3.3에서 nullable 명시)
     top_grade = make_grade_policy(grade="A+", grade_rank=1, min_score=95, max_score=100)
     grade_repository = MagicMock()
     grade_repository.find_by_score.return_value = top_grade

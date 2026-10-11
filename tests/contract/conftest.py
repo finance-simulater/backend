@@ -47,9 +47,11 @@ def _openapi_to_json_schema(node: Any) -> Any:
     return converted
 
 
-@pytest.fixture(scope="session")
-def openapi_spec() -> SpecDict:
+def load_openapi_spec(path: Path = SPEC_PATH) -> SpecDict:
     """openapi.yaml을 로드해 jsonschema로 검증 가능한 형태로 돌려준다.
+
+    fixture와 분리한 이유: skip/fail 분기를 테스트에서 일반 함수로 직접 호출해 검증하기 위함
+    (fixture 함수를 직접 부르려면 pytest 내부 구현인 `__wrapped__`에 기대야 한다).
 
     spec은 서브모듈이라 `git submodule update --init spec` 전에는 파일이 없다. 그런 로컬
     환경에서 계약 테스트만 빨간불이 되는 걸 막기 위해 skip한다.
@@ -57,12 +59,17 @@ def openapi_spec() -> SpecDict:
     커밋을 deploy key로 직접 checkout하는데(.github/workflows/test.yml), 키 누락·checkout 경로 변경
     등으로 파일이 없으면 계약 테스트 전체가 skip된 채 초록불이 돼 드리프트를 조용히 놓치기 때문.
     """
-    if not SPEC_PATH.exists():
-        message = f"openapi.yaml 없음: {SPEC_PATH} — `git submodule update --init spec` 필요"
+    if not path.exists():
+        message = f"openapi.yaml 없음: {path} — `git submodule update --init spec` 필요"
         if os.environ.get("CI"):
             pytest.fail(f"{message} (CI에서는 spec checkout이 필수)")
         pytest.skip(message)
-    return _openapi_to_json_schema(yaml.safe_load(SPEC_PATH.read_text(encoding="utf-8")))
+    return _openapi_to_json_schema(yaml.safe_load(path.read_text(encoding="utf-8")))
+
+
+@pytest.fixture(scope="session")
+def openapi_spec() -> SpecDict:
+    return load_openapi_spec()
 
 
 def spec_operations(spec: SpecDict) -> list[tuple[str, str, SpecDict]]:

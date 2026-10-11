@@ -4,8 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.contract import conftest
-from tests.contract.conftest import _openapi_to_json_schema
+from tests.contract.conftest import _openapi_to_json_schema, load_openapi_spec
 
 pytestmark = pytest.mark.contract
 
@@ -23,16 +22,14 @@ def test_property_named_nullable_is_not_treated_as_keyword() -> None:
 
 
 def test_missing_spec_fails_in_ci(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(conftest, "SPEC_PATH", tmp_path / "missing.yaml")
     monkeypatch.setenv("CI", "true")
 
     with pytest.raises(pytest.fail.Exception):
-        conftest.openapi_spec.__wrapped__()
+        load_openapi_spec(tmp_path / "missing.yaml")
 
 
 def test_missing_spec_skips_locally(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(conftest, "SPEC_PATH", tmp_path / "missing.yaml")
     monkeypatch.delenv("CI", raising=False)
 
     with pytest.raises(pytest.skip.Exception):
-        conftest.openapi_spec.__wrapped__()
+        load_openapi_spec(tmp_path / "missing.yaml")

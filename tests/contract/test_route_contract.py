@@ -7,8 +7,12 @@
   finance-simulater/spec#9에서 진행한다.
 """
 
+import pytest
+
 from app.main import app
 from tests.contract.conftest import HTTP_METHODS, SpecDict, spec_operations
+
+pytestmark = pytest.mark.contract
 
 # openapi.yaml에 아직 경로가 없는 엔드포인트 (= 스펙 문서화 부채).
 # 스펙에 경로가 추가되면 test_undocumented_routes_are_not_stale이 실패하므로 여기서 지운다.

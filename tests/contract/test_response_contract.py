@@ -25,6 +25,8 @@ from app.health import router as health_router
 from app.main import app
 from tests.contract.conftest import SpecDict, assert_response_matches_spec
 
+pytestmark = pytest.mark.contract
+
 USER_ID = 1
 TURN_CHOICE = {"food_choice": "normal", "shopping_choice": "normal", "leisure_choice": "normal"}
 

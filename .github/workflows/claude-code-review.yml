@@ -39,6 +39,12 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # 자동 실행(prompt 지정) 모드는 Bash 도구가 기본 차단돼 리뷰 결과를 PR에 게시하지 못한다 (#49).
+          # code-review 플러그인이 쓰는 gh 명령만 허용한다.
+          claude_args: |
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
+          # 원인 확인용 — 게시 정상 동작 확인 후 제거한다.
+          show_full_output: true
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 

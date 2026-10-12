@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   claude-response:
+    # PR 대화창 코멘트도 issue_comment 이벤트라, 제외하지 않으면 claude.yml과 중복 응답한다 (#49).
+    if: github.event.issue.pull_request == null
     runs-on: ubuntu-latest
     environment: prod
     steps:

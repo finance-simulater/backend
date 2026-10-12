@@ -6,7 +6,8 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [opened, assigned]
+    # assigned까지 받으면 이슈 생성과 담당자 지정이 연달아 일어날 때 같은 이슈로 2번 실행된다 (#49).
+    types: [opened]
   pull_request_review:
     types: [submitted]
 

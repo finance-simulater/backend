@@ -1,7 +1,8 @@
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+from app.core.types import UtcDatetime
 
 CreditHistoryReason = Literal["loan_payment", "overdue", "loan_complete", "loan_default"]
 
@@ -22,4 +23,4 @@ class CreditHistoryEntryResponse(BaseModel):
     delta: int
     reason: CreditHistoryReason
     score_after: int
-    created_at: datetime
+    created_at: UtcDatetime

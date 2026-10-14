@@ -1,8 +1,9 @@
-from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.types import UtcDatetime
 
 
 class LoanResponse(BaseModel):
@@ -20,7 +21,7 @@ class LoanResponse(BaseModel):
     remaining_balance: int
     status: str
     started_turn: int
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class GradeOption(BaseModel):

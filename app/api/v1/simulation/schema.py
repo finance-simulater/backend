@@ -1,7 +1,8 @@
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+from app.core.types import UtcDatetime
 
 ConsumeLevel = Literal["save", "normal", "some", "much"]
 
@@ -46,4 +47,4 @@ class TurnResponse(BaseModel):
     is_overdue: bool
     cash_balance_after: int
     total_asset_after: int
-    created_at: datetime
+    created_at: UtcDatetime

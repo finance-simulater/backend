@@ -1,8 +1,9 @@
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 from pydantic import ConfigDict
+
+from app.core.types import UtcDatetime
 
 
 class UserCreate(BaseModel):
@@ -29,5 +30,5 @@ class UserResponse(BaseModel):
     provider: str
     social_id: str | None = None
     onboarding_step: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime

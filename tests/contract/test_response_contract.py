@@ -4,11 +4,11 @@
 쓰되, 필드값을 손으로 단언하지 않고 assert_response_matches_spec으로 스펙에서 유도한 스키마에 대조한다.
 리스트 응답은 빈 배열이면 items 스키마가 검증되지 않으므로 항상 1건 이상 채워서 호출한다.
 
-주의: `created_at`은 tz-aware(UTC)로 만들어 `...Z`로 직렬화되지만, 실제 DB(MySQL DATETIME)는 naive 값을
-돌려줘 오프셋 없이 직렬화된다 — 테스트 데이터가 실제보다 깨끗하다. #43에서 앱 수정과 함께 naive로 바꾼다.
+`created_at`은 실제 DB(MySQL DATETIME)가 돌려주는 것과 같은 naive datetime으로 만든다 —
+tz-aware로 만들면 실제보다 깨끗한 데이터로 `date-time` 포맷 위반을 놓친다 (#43).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,6 +31,7 @@ from tests.contract.conftest import SpecDict, assert_response_matches_spec
 pytestmark = pytest.mark.contract
 
 USER_ID = 1
+DB_NOW = datetime(2026, 10, 11, 12, 0)  # MySQL DATETIME이 돌려주는 naive 값 (UTC 기준)
 TURN_CHOICE = {"food_choice": "normal", "shopping_choice": "normal", "leisure_choice": "normal"}
 
 
@@ -90,7 +91,7 @@ def make_turn(**overrides) -> Turn:
         is_overdue=False,
         cash_balance_after=1_900_000,
         total_asset_after=1_900_000,
-        created_at=datetime.now(timezone.utc),
+        created_at=DB_NOW,
     )
     defaults.update(overrides)
     return Turn(**defaults)
@@ -208,7 +209,7 @@ def test_list_turns(client: TestClient, openapi_spec: SpecDict) -> None:
 
 def test_advance_turn_created(client: TestClient, openapi_spec: SpecDict) -> None:
     def _create_turn(turn: Turn) -> Turn:
-        turn.created_at = datetime.now(timezone.utc)  # DB server_default를 흉내
+        turn.created_at = DB_NOW  # DB server_default를 흉내
         return turn
 
     turn_repository = MagicMock()
@@ -317,7 +318,7 @@ def test_get_credit_history(client: TestClient, openapi_spec: SpecDict) -> None:
             delta=1,
             reason="loan_payment",
             score_after=71,
-            created_at=datetime.now(timezone.utc),
+            created_at=DB_NOW,
         )
     ]
     _override_credit(make_state(), history_repository=history_repository)

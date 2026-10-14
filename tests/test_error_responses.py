@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.v1.auth.dependencies import get_current_user
+from app.api.v1.user.model import User
 from app.cache import RedisNotReadyError
 from app.main import app
 
@@ -82,3 +84,39 @@ def test_public_user_management_endpoints_are_not_exposed(
     response = getattr(client, method)("/api/v1/users/")
 
     assert response.status_code == 404
+
+
+@pytest.fixture
+def logged_in_client(client: TestClient):
+    # 요청 검증 단계까지 가려면 인증 의존성을 통과해야 한다 — 검증은 서비스 호출 전에 실패하므로 서비스 목은 불필요
+    app.dependency_overrides[get_current_user] = lambda: User(id=1, monthly_salary=2_000_000)
+    yield client
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_validation_error_detail_lists_loc_and_msg(logged_in_client: TestClient) -> None:
+    response = logged_in_client.post("/api/v1/simulation/turns", json={})
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "code": "INVALID_REQUEST",
+        "detail": (
+            "body.food_choice: Field required; "
+            "body.shopping_choice: Field required; "
+            "body.leisure_choice: Field required"
+        ),
+    }
+
+
+def test_validation_error_detail_hides_input_and_source_location(logged_in_client: TestClient) -> None:
+    # 서버 파일 경로·엔드포인트 함수명·사용자 입력 원본값이 응답에 새지 않아야 한다 (#44)
+    payload = {"food_choice": "SECRET_INPUT", "shopping_choice": "normal", "leisure_choice": "normal"}
+
+    response = logged_in_client.post("/api/v1/simulation/turns", json=payload)
+
+    detail = response.json()["detail"]
+    assert response.status_code == 422
+    assert detail.startswith("body.food_choice: ")
+    assert "SECRET_INPUT" not in detail
+    assert ".py" not in detail
+    assert "advance_turn" not in detail

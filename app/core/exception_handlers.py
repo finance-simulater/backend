@@ -36,9 +36,19 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     return JSONResponse(status_code=exc.status_code, content={"code": code, "detail": exc.detail})
 
 
+def _format_validation_errors(exc: RequestValidationError) -> str:
+    # str(exc)는 서버 파일 경로·엔드포인트 함수명·사용자 입력 원본값(input)까지 담고 있어 응답에 쓰면 안 된다 (#44).
+    # 각 에러에서 위치(loc)와 메시지(msg)만 골라 "body.food_choice: Field required; ..." 형태로 만든다.
+    return "; ".join(
+        f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in exc.errors()
+    )
+
+
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # 요청 body/쿼리가 스키마 검증(Pydantic)에서 실패했을 때 FastAPI가 자동으로 던지는 예외를 잡는다.
-    return JSONResponse(status_code=422, content={"code": "INVALID_REQUEST", "detail": str(exc)})
+    return JSONResponse(
+        status_code=422, content={"code": "INVALID_REQUEST", "detail": _format_validation_errors(exc)}
+    )
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

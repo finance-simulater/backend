@@ -4,7 +4,7 @@ from app.api.v1.stock.repository import StockHoldingRepository
 from app.api.v1.stock.schema import STOCK_META, StockBuyRequest, StockSellRequest
 from app.api.v1.simulation.model import SimulationState
 from app.api.v1.stock.model import StockHolding
-from app.core.exceptions import bad_request, conflict, not_found
+from app.core.exceptions import conflict, not_found, unprocessable
 
 
 def _to_holding_dict(holding: StockHolding) -> dict:
@@ -55,7 +55,7 @@ class StockService:
         self._ensure_active(state)
 
         if request.amount > state.cash_balance:
-            raise bad_request(
+            raise unprocessable(
                 f"잔액이 부족합니다. 보유 현금: {state.cash_balance:,}원, 매수 시도: {request.amount:,}원",
                 code="INSUFFICIENT_BALANCE",
             )
@@ -95,7 +95,7 @@ class StockService:
             raise not_found("보유한 주식이 없습니다.")
 
         if request.amount > holding.current_value:
-            raise bad_request(
+            raise unprocessable(
                 f"매도 금액이 보유 평가금액({holding.current_value:,}원)을 초과합니다.",
                 code="INSUFFICIENT_HOLDINGS",
             )

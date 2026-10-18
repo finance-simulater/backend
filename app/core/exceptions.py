@@ -38,7 +38,7 @@ def too_many_requests(detail: str, code: str = "TOO_MANY_REQUESTS") -> AppHTTPEx
 
 
 def unprocessable(detail: str, code: str) -> AppHTTPException:
-    return AppHTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, code=code, detail=detail)
+    return AppHTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, code=code, detail=detail)
 
 
 def service_unavailable(detail: str, code: str = "SERVICE_UNAVAILABLE") -> AppHTTPException:

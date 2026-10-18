@@ -185,7 +185,7 @@ def test_buy_existing_holding_merges_amount() -> None:
     assert len(repo.holdings) == 1  # 새 레코드가 아니라 합산
 
 
-def test_buy_insufficient_balance_returns_400() -> None:
+def test_buy_insufficient_balance_returns_422() -> None:
     repo = FakeStockRepository(cash_balance=150_000)
     client = make_client(repo)
 
@@ -194,7 +194,7 @@ def test_buy_insufficient_balance_returns_400() -> None:
         json={"stock_type": "low_vol", "amount": 300_000},
     )
 
-    assert res.status_code == 400
+    assert res.status_code == 422
     assert res.json()["code"] == "INSUFFICIENT_BALANCE"
     assert repo.state.cash_balance == 150_000  # 미변경
 
@@ -253,7 +253,7 @@ def test_sell_not_owned_returns_404() -> None:
     assert res.json()["code"] == "NOT_FOUND"
 
 
-def test_sell_exceeds_holding_returns_400() -> None:
+def test_sell_exceeds_holding_returns_422() -> None:
     repo = FakeStockRepository(
         cash_balance=100_000,
         holdings=[_holding("index", principal=100_000, current_value=100_000, hid=2)],
@@ -265,7 +265,7 @@ def test_sell_exceeds_holding_returns_400() -> None:
         json={"stock_type": "index", "amount": 200_000},
     )
 
-    assert res.status_code == 400
+    assert res.status_code == 422
     assert res.json()["code"] == "INSUFFICIENT_HOLDINGS"
     assert repo.state.cash_balance == 100_000  # 미변경
 

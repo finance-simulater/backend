@@ -38,7 +38,7 @@ async def buy_stock(
     current_user: User = Depends(get_current_user),
     service: StockService = Depends(get_stock_service),
 ):
-    """주식 매수. 잔액 부족 시 400 INSUFFICIENT_BALANCE"""
+    """주식 매수. 잔액 부족 시 422 INSUFFICIENT_BALANCE"""
     return service.buy(current_user.id, request)
 
 

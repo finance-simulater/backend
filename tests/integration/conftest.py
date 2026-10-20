@@ -56,6 +56,17 @@ def _create_database_if_missing(database_url: str) -> None:
         server_engine.dispose()
 
 
+def skip_or_fail_unavailable(reason: str) -> None:
+    """외부 의존(MySQL·Redis)에 연결할 수 없을 때 로컬에선 skip, CI에선 실패시킨다.
+
+    CI에서 skip을 허용하면 서비스 컨테이너가 뜨지 않아 테스트가 하나도 돌지 않아도 초록불로 끝난다.
+    GitHub Actions는 `CI=true`를 항상 설정한다.
+    """
+    if os.environ.get("CI"):
+        pytest.fail(f"CI에서는 skip하지 않는다 — {reason}")
+    pytest.skip(reason)
+
+
 @pytest.fixture(scope="session")
 def mysql_engine() -> Generator[Engine, None, None]:
     database_url = _test_database_url()
@@ -63,7 +74,7 @@ def mysql_engine() -> Generator[Engine, None, None]:
     try:
         _create_database_if_missing(database_url)
     except OperationalError as exc:
-        pytest.skip(f"테스트용 MySQL에 연결할 수 없습니다 (docker-compose mysql 실행 필요): {exc}")
+        skip_or_fail_unavailable(f"테스트용 MySQL에 연결할 수 없습니다 (docker-compose mysql 실행 필요): {exc}")
 
     alembic_cfg = Config(os.path.join(BACKEND_ROOT, "alembic.ini"))
     alembic_cfg.set_main_option("script_location", os.path.join(BACKEND_ROOT, "alembic"))

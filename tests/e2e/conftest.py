@@ -12,17 +12,25 @@ from dataclasses import dataclass, field
 import pytest
 from fastapi.testclient import TestClient
 from redis import Redis
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import service as auth_service_module
 from app.database import get_db
 from app.main import app
-from tests.integration.conftest import _cleanup_real_users, mysql_engine  # noqa: F401 — mysql_engine 픽스처 재사용
+from tests.integration.conftest import (  # noqa: F401 — mysql_engine 픽스처 재사용
+    _cleanup_real_users,
+    mysql_engine,
+    skip_or_fail_unavailable,
+)
 
 # 개발용 Redis(0번 DB)와 섞이지 않도록 E2E는 별도 DB 번호를 쓰고, 시작·종료 시 그 DB만 비운다.
 E2E_REDIS_URL = os.environ.get("E2E_REDIS_URL", "redis://localhost:6379/15")
 PASSWORD = "password123!"
+# 테스트가 만드는 사용자의 이메일 형식 — 정리할 때 이 형식으로도 찾는다
+EMAIL_PREFIX = "e2e-"
+EMAIL_DOMAIN = "@example.com"
 
 
 class CapturingEmailSender:
@@ -61,7 +69,7 @@ class E2EApi:
         """이메일 인증 → 회원가입까지 마치고 access token이 붙은 클라이언트를 돌려준다."""
         client = self.new_client()
         unique = uuid.uuid4().hex[:12]
-        email = f"e2e-{unique}@example.com"
+        email = f"{EMAIL_PREFIX}{unique}{EMAIL_DOMAIN}"
         response = client.post(
             "/api/v1/auth/signup",
             json={
@@ -84,10 +92,13 @@ class E2EApi:
 @pytest.fixture(scope="session")
 def e2e_redis() -> Generator[Redis, None, None]:
     client = Redis.from_url(E2E_REDIS_URL, decode_responses=True, socket_connect_timeout=2, socket_timeout=2)
+    # 시작·종료 시 flushdb로 DB를 통째로 비우므로, 개발용 0번 DB를 가리키면 실행하지 않는다
+    if client.connection_pool.connection_kwargs.get("db", 0) == 0:
+        pytest.fail(f"E2E_REDIS_URL은 0번이 아닌 Redis DB를 가리켜야 합니다: {E2E_REDIS_URL}")
     try:
         client.ping()
     except Exception as exc:
-        pytest.skip(f"E2E용 Redis에 연결할 수 없습니다 (docker-compose redis 실행 필요): {exc}")
+        skip_or_fail_unavailable(f"E2E용 Redis에 연결할 수 없습니다 (docker-compose redis 실행 필요): {exc}")
     client.flushdb()
     yield client
     client.flushdb()
@@ -112,4 +123,14 @@ def api(mysql_engine: Engine, e2e_redis: Redis, monkeypatch: pytest.MonkeyPatch)
     e2e_api = E2EApi(sender=sender)
     yield e2e_api
     app.dependency_overrides.pop(get_db, None)
-    _cleanup_real_users(mysql_engine, e2e_api.created_user_ids)
+    _cleanup_real_users(mysql_engine, e2e_api.created_user_ids + _find_e2e_user_ids(mysql_engine))
+
+
+def _find_e2e_user_ids(engine: Engine) -> list[int]:
+    # 가입은 커밋됐는데 응답 검증에서 실패하면 id가 기록되지 않으므로, 이메일 형식으로도 찾아 지운다
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text("SELECT id FROM users WHERE email LIKE :pattern"),
+            {"pattern": f"{EMAIL_PREFIX}%{EMAIL_DOMAIN}"},
+        )
+        return [row.id for row in rows]

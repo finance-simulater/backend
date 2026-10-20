@@ -13,7 +13,8 @@ import pytest
 from app.api.v1 import models  # noqa: F401  (모든 모델을 등록해야 relationship 문자열 참조가 풀린다)
 from app.api.v1.credit.model import CreditGradePolicy
 from app.api.v1.loan.model import Loan
-from app.api.v1.loan.service import LoanService
+from app.api.v1.loan.schema import LoanDuration
+from app.api.v1.loan.service import DURATION_RATE_ADJUSTMENT, LoanService
 from app.api.v1.simulation.model import SimulationState
 from app.core.exceptions import AppHTTPException
 
@@ -200,3 +201,11 @@ def test_get_schedule_raises_not_found_when_owned_by_another_user() -> None:
 
     assert exc_info.value.status_code == 404
     service.repository.find_schedule_by_loan.assert_not_called()
+
+
+def test_duration_rate_adjustment_covers_every_loan_duration() -> None:
+    """허용 기간(LoanDuration)과 금리 가산표의 키가 어긋나면 견적·신청이 KeyError(500)로 실패한다.
+
+    기간을 추가·삭제할 때 두 정의를 함께 고치도록 강제한다 (#67).
+    """
+    assert set(DURATION_RATE_ADJUSTMENT) == set(LoanDuration)

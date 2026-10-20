@@ -1,4 +1,4 @@
-from typing import Literal
+from enum import IntEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,9 +48,21 @@ class LoanQuoteResponse(BaseModel):
     total_interest: int
 
 
+class LoanDuration(IntEnum):
+    """대출 기간(개월). 견적 쿼리·신청 body가 함께 쓰는 단일 정의 — 기간 추가 시 여기만 고친다.
+
+    쿼리 값은 문자열("12")로 들어오는데 Pydantic v2의 Literal[3, 6, 12]는 문자열을 정수로
+    바꾸지 않아 항상 422가 난다(#67). IntEnum은 "12" → 12로 변환해 검증한다.
+    """
+
+    THREE = 3
+    SIX = 6
+    TWELVE = 12
+
+
 class LoanApplicationRequest(BaseModel):
     principal: int = Field(gt=0)
-    duration_months: Literal[3, 6, 12]
+    duration_months: LoanDuration
 
 
 class RepaymentScheduleItem(BaseModel):

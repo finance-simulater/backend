@@ -43,3 +43,14 @@ class UserRepository:
             self.db.rollback()
             raise
         return user
+
+    def update_monthly_salary(self, user: User, monthly_salary: int) -> User:
+        user.monthly_salary = monthly_salary
+        try:
+            self.db.commit()
+            # updated_at(ON UPDATE CURRENT_TIMESTAMP)을 DB에서 다시 읽는다
+            self.db.refresh(user)
+        except Exception:
+            self.db.rollback()
+            raise
+        return user

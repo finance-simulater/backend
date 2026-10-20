@@ -61,3 +61,12 @@ def test_create_raises_on_duplicate_email(db_session):
 
     with pytest.raises(IntegrityError):
         repository.create(user_create, password_hash="hashed")
+
+
+def test_update_monthly_salary_persists(db_session):
+    user = make_user(db_session, monthly_salary=3_000_000)
+    repository = UserRepository(db_session)
+
+    repository.update_monthly_salary(user, 3_500_000)
+
+    assert db_session.get(User, user.id).monthly_salary == 3_500_000

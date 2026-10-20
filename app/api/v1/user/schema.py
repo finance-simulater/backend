@@ -17,6 +17,10 @@ class UserCreate(BaseModel):
     social_id: str | None = Field(default=None, max_length=255)
 
 
+class UserUpdate(BaseModel):
+    monthly_salary: int = Field(ge=0)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

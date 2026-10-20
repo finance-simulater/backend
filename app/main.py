@@ -8,6 +8,7 @@ from app.api.v1.fixed_expense.router import router as fixed_expense_router
 from app.api.v1.loan.router import router as loan_router
 from app.api.v1.simulation.router import router as simulation_router
 from app.api.v1.stock.router import router as stock_router
+from app.api.v1.user.router import router as user_router
 from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
 from app.health.router import router as health_router
@@ -28,6 +29,7 @@ app.include_router(credit_router)
 app.include_router(loan_router)
 app.include_router(simulation_router)
 app.include_router(stock_router)
+app.include_router(user_router)
 app.include_router(fixed_expense_router)
 
 register_exception_handlers(app)

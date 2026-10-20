@@ -1,0 +1,61 @@
+name: Docs
+
+# spec/api/openapi.yaml을 Swagger UI 정적 페이지로 GitHub Pages에 배포한다 (#76).
+# spec 레포는 private이라 Pages를 쓸 수 없어 public인 이 레포에서 배포한다.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # test.yml과 같이 spec 읽기 전용 deploy key로 받는다(GITHUB_TOKEN은 이 레포 권한만 있음).
+      - name: Checkout spec
+        uses: actions/checkout@v4
+        with:
+          repository: finance-simulater/spec
+          ref: main
+          fetch-depth: 0
+          path: spec
+          ssh-key: ${{ secrets.SPEC_DEPLOY_KEY }}
+          persist-credentials: false
+
+      # 문서가 main 코드와 같은 버전의 스펙을 보여주도록 서브모듈 포인터 커밋으로 전환한다.
+      - name: Switch spec to submodule pointer
+        run: git -C spec checkout --quiet --detach "$(git rev-parse HEAD:spec)"
+
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp docs/swagger/index.html _site/
+          cp spec/api/openapi.yaml _site/
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

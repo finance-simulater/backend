@@ -1,10 +1,11 @@
 """계약 테스트 공용 유틸(conftest.py) 자체의 경계 케이스 검증 (#40)."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tests.contract.conftest import _openapi_to_json_schema, load_openapi_spec
+from tests.contract.conftest import _openapi_to_json_schema, assert_response_matches_spec, load_openapi_spec
 
 pytestmark = pytest.mark.contract
 
@@ -33,3 +34,22 @@ def test_missing_spec_skips_locally(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
     with pytest.raises(pytest.skip.Exception):
         load_openapi_spec(tmp_path / "missing.yaml")
+
+
+def test_response_ref_is_resolved_and_body_validated() -> None:
+    # 공통 응답 $ref를 풀지 않으면 content가 없어 body 검증이 건너뛰어진다 (#66)
+    spec = {
+        "paths": {"/x": {"get": {"responses": {"401": {"$ref": "#/components/responses/Unauthenticated"}}}}},
+        "components": {
+            "responses": {
+                "Unauthenticated": {
+                    "description": "미인증",
+                    "content": {"application/json": {"schema": {"type": "object", "required": ["code"]}}},
+                }
+            }
+        },
+    }
+    response = SimpleNamespace(status_code=401, json=lambda: {})
+
+    with pytest.raises(AssertionError, match="code"):
+        assert_response_matches_spec(spec, response, "/x", "get")

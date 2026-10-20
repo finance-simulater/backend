@@ -90,6 +90,19 @@ def find_operation(spec: SpecDict, path: str, method: str) -> SpecDict:
     return operation
 
 
+def _resolve_response(spec: SpecDict, response_def: SpecDict) -> SpecDict:
+    """`$ref: '#/components/responses/X'`로 정의된 공통 응답(401·422 등)을 실제 정의로 바꾼다.
+
+    풀지 않으면 `content` 키가 없어 본문 없는 응답(204)처럼 취급돼 body 검증이 조용히 건너뛰어진다(#66).
+    """
+    ref = response_def.get("$ref")
+    if ref is None:
+        return response_def
+    prefix = "#/components/responses/"
+    assert ref.startswith(prefix), f"지원하지 않는 response $ref: {ref}"
+    return spec["components"]["responses"][ref.removeprefix(prefix)]
+
+
 def _json_path(error: Any) -> str:
     path = ".".join(str(part) for part in error.absolute_path)
     return f"$.{path}" if path else "$"
@@ -114,7 +127,7 @@ def assert_response_matches_spec(spec: SpecDict, response: Any, path: str, metho
         f"(정의된 응답: {sorted(responses)})"
     )
 
-    content = responses[status_code].get("content")
+    content = _resolve_response(spec, responses[status_code]).get("content")
     if content is None:  # 본문 없는 응답(204 등)은 스펙에 content가 없다
         return
 

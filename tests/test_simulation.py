@@ -1,5 +1,6 @@
 """턴 처리 API 핵심 로직 검증 (finance-simulater/backend#14)."""
 
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,7 +10,7 @@ from app.api.v1.fixed_expense.model import FixedExpense
 from app.api.v1.loan.model import Loan, RepaymentSchedule
 from app.api.v1.simulation.model import SimulationState
 from app.api.v1.simulation.schema import TurnChoiceRequest
-from app.api.v1.simulation.service import SimulationService
+from app.api.v1.simulation.service import SimulationService, new_simulation_state, next_year_month
 from app.api.v1.user.model import User
 from app.core.exceptions import AppHTTPException
 from app.core.types import MAX_MONTHLY_AMOUNT
@@ -327,6 +328,24 @@ def test_advance_turn_rejects_fixed_expense_total_beyond_int_before_writing() ->
     assert exc_info.value.code == "INSUFFICIENT_BALANCE"
     service.expense_repository.create_many.assert_not_called()
     service.turn_repository.create.assert_not_called()
+
+
+def test_new_simulation_state_starts_with_salary_from_next_month() -> None:
+    # 가입한 달 월급은 시작 현금으로 이미 들어왔으므로 턴1은 다음 달이다 (spec#21)
+    state = new_simulation_state(3_000_000, date(2026, 10, 21))
+
+    assert (state.current_turn, state.current_year, state.current_month) == (1, 2026, 11)
+    assert state.cash_balance == 3_000_000
+    assert (state.credit_score, state.consume_score, state.status) == (50, 50, "active")
+
+
+@pytest.mark.parametrize(
+    ("year", "month", "expected"),
+    [(2026, 1, (2026, 2)), (2026, 11, (2026, 12)), (2026, 12, (2027, 1))],
+    ids=["january", "november", "december-rolls-over"],
+)
+def test_next_year_month(year: int, month: int, expected: tuple[int, int]) -> None:
+    assert next_year_month(year, month) == expected
 
 
 def test_advance_turn_rejects_completed_simulation() -> None:

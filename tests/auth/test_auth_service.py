@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import jwt
@@ -53,6 +54,36 @@ def test_signup_creates_verified_user_after_ticket_validation() -> None:
     )
     verification_service.consume_ticket.assert_called_once_with("v" * 43)
     refresh_repository.save.assert_called_once()
+
+
+def test_signup_starts_simulation_with_salary_from_next_month() -> None:
+    user_repository = MagicMock(spec=UserRepository)
+    user_repository.find_by_email.return_value = None
+    user_repository.find_by_nickname.return_value = None
+    user_repository.create.return_value = make_user(is_email_verified=True)
+    service = AuthService(
+        db=MagicMock(),
+        user_repository=user_repository,
+        refresh_token_repository=MagicMock(spec=RefreshTokenRepository),
+        email_verification_service=MagicMock(spec=EmailVerificationService),
+    )
+
+    with patch("app.api.v1.auth.service.today_kst", return_value=date(2026, 12, 31)):
+        service.signup(
+            SignupRequest(
+                email="user@example.com",
+                email_verification_token="v" * 43,
+                password="password123",
+                nickname="tester",
+                profile_image_seed="tester",
+                job_type="employee",
+                monthly_salary=3_000_000,
+            )
+        )
+
+    state = user_repository.create.call_args.kwargs["simulation_state"]
+    assert (state.current_turn, state.current_year, state.current_month) == (1, 2027, 1)
+    assert state.cash_balance == 3_000_000
 
 
 def test_signup_does_not_create_user_when_verification_ticket_is_invalid() -> None:

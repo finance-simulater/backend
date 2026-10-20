@@ -39,7 +39,13 @@ from app.core.exceptions import bad_request, conflict, too_many_requests, unauth
 from app.health import router as health_router
 from app.main import app
 from tests.auth.factories import make_user
-from tests.contract.conftest import SpecDict, assert_response_matches_spec, spec_operations
+from tests.contract.conftest import (
+    SPEC_PATH,
+    SpecDict,
+    assert_response_matches_spec,
+    load_openapi_spec,
+    spec_operations,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -789,14 +795,13 @@ def test_get_loan_schedule(client: TestClient, openapi_spec: SpecDict) -> None:
 # ── 공통 에러 응답 (spec#12) ─────────────────────
 
 
-def _bearer_operations() -> list[tuple[str, str]]:
-    """스펙에서 bearerAuth가 필요한(security: [] 또는 다른 scheme이 아닌) operation 목록.
+def _bearer_operations(spec: SpecDict) -> list[tuple[str, str]]:
+    """스펙에서 bearerAuth를 요구하는 operation 목록.
 
-    스펙에서 직접 뽑아 새 경로가 추가되면 자동으로 401 검증 대상에 들어오게 한다.
+    operation에 `security`가 없으면 루트 `security`(bearerAuth)를 따르고, `security: []`(공개)나
+    `refreshCookieAuth`만 요구하는 operation은 제외된다. 스펙에서 직접 뽑으므로 새 경로가 추가되면
+    자동으로 401 검증 대상에 들어온다.
     """
-    from tests.contract.conftest import load_openapi_spec
-
-    spec = load_openapi_spec()
     default_security = spec.get("security", [])
     return [
         (path, method)
@@ -805,8 +810,24 @@ def _bearer_operations() -> list[tuple[str, str]]:
     ]
 
 
-@pytest.mark.parametrize(("path", "method"), _bearer_operations())
-def test_unauthenticated_request_returns_401(client: TestClient, openapi_spec: SpecDict, path: str, method: str) -> None:
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """401 테스트를 스펙의 bearer operation으로 parametrize한다.
+
+    `@pytest.mark.parametrize(..., _bearer_operations(load_openapi_spec()))`처럼 모듈 import 시점에
+    스펙을 읽으면, spec 파일이 없을 때 load_openapi_spec의 skip/fail이 테스트 밖에서 호출돼 수집 오류로
+    세션 전체가 중단된다. 여기서는 파일이 없으면 빈 목록으로 parametrize해 이 테스트만 skip되게 두고,
+    로컬 skip·CI 실패 판단은 다른 계약 테스트의 openapi_spec fixture에 맡긴다.
+    """
+    if "bearer_operation" not in metafunc.fixturenames:
+        return
+    operations = _bearer_operations(load_openapi_spec()) if SPEC_PATH.exists() else []
+    metafunc.parametrize("bearer_operation", operations, ids=[f"{method.upper()} {path}" for path, method in operations])
+
+
+def test_unauthenticated_request_returns_401(
+    client: TestClient, openapi_spec: SpecDict, bearer_operation: tuple[str, str]
+) -> None:
+    path, method = bearer_operation
     # 경로 파라미터는 모두 정수 id라 1로 채운다. 인증 의존성이 body 검증보다 먼저 실패하므로 body는 보내지 않는다.
     url = path.replace("{turn_number}", "1").replace("{loan_id}", "1")
 

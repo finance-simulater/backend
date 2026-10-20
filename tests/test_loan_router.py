@@ -6,6 +6,7 @@ get_loan/get_schedule/get_loans 세 엔드포인트에 Depends(get_current_user)
 """
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
@@ -128,3 +129,32 @@ def test_list_loans_scopes_to_current_user() -> None:
 
     assert response.status_code == 200
     repository.find_all_by_user.assert_called_once_with(OWNER_ID)
+
+
+@pytest.mark.parametrize("duration_months", [3, 6, 12])
+def test_get_quote_accepts_duration_from_query_string(duration_months: int) -> None:
+    """쿼리 문자열("12")로 들어온 기간이 Literal 검증에 막혀 항상 422가 나던 버그 (#67)."""
+    simulation_repository = MagicMock()
+    simulation_repository.find_by_user.return_value = MagicMock(credit_score=70)
+    credit_repository = MagicMock()
+    credit_repository.find_by_score.return_value = MagicMock(base_interest_rate=Decimal("5.5"))
+    app.dependency_overrides[get_loan_service] = lambda: LoanService(
+        db=MagicMock(), credit_repository=credit_repository, simulation_repository=simulation_repository
+    )
+    app.dependency_overrides[get_current_user] = lambda: User(id=OWNER_ID)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/loans/quote", params={"principal": 1_000_000, "duration_months": duration_months})
+
+    assert response.status_code == 200
+    assert response.json()["duration_months"] == duration_months
+
+
+def test_get_quote_rejects_unsupported_duration() -> None:
+    app.dependency_overrides[get_loan_service] = lambda: LoanService(db=MagicMock())
+    app.dependency_overrides[get_current_user] = lambda: User(id=OWNER_ID)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/loans/quote", params={"principal": 1_000_000, "duration_months": 5})
+
+    assert response.status_code == 422

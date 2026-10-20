@@ -1,11 +1,10 @@
-from typing import Literal
-
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth.dependencies import get_current_user
 from app.api.v1.loan.schema import (
     LoanApplicationRequest,
+    LoanDuration,
     LoanEligibilityResponse,
     LoanQuoteResponse,
     LoanResponse,
@@ -43,7 +42,7 @@ async def get_eligibility(
 @router.get("/quote", response_model=LoanQuoteResponse)
 async def get_quote(
     principal: int = Query(gt=0),
-    duration_months: Literal[3, 6, 12] = Query(...),
+    duration_months: LoanDuration = Query(...),
     current_user: User = Depends(get_current_user),
     service: LoanService = Depends(get_loan_service),
 ):

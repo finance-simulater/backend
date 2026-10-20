@@ -13,9 +13,10 @@ permissions:
   pages: write
   id-token: write
 
+# 진행 중인 배포는 끊지 않는다 — 대기 중인 최신 실행만 남고 그 사이 실행은 건너뛴다 (GitHub Pages 템플릿과 동일).
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -42,8 +43,16 @@ jobs:
           persist-credentials: false
 
       # 문서가 main 코드와 같은 버전의 스펙을 보여주도록 서브모듈 포인터 커밋으로 전환한다.
+      # 실패 원인을 알 수 있도록 포인터를 출력하고, test.yml과 같이 spec main 히스토리에 있는지 먼저 확인한다.
       - name: Switch spec to submodule pointer
-        run: git -C spec checkout --quiet --detach "$(git rev-parse HEAD:spec)"
+        run: |
+          SPEC_PTR="$(git rev-parse HEAD:spec)"
+          echo "spec 포인터: $SPEC_PTR"
+          if ! git -C spec merge-base --is-ancestor "$SPEC_PTR" origin/main; then
+            echo "::error::spec 포인터($SPEC_PTR)가 spec main 히스토리에 없는 커밋"
+            exit 1
+          fi
+          git -C spec checkout --quiet --detach "$SPEC_PTR"
 
       - name: Build site
         run: |

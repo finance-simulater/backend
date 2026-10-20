@@ -1,9 +1,8 @@
-from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.types import UtcDatetime
+from app.core.types import DecimalNumber, UtcDatetime
 
 
 class LoanResponse(BaseModel):
@@ -13,7 +12,7 @@ class LoanResponse(BaseModel):
     applied_credit_grade: str
     applied_credit_score: int
     applied_limit: int
-    interest_rate: Decimal
+    interest_rate: DecimalNumber
     principal: int
     duration_months: int
     monthly_payment: int
@@ -29,21 +28,21 @@ class GradeOption(BaseModel):
 
     grade: str
     credit_limit: int
-    base_interest_rate: Decimal
+    base_interest_rate: DecimalNumber
 
 
 class LoanEligibilityResponse(BaseModel):
     credit_grade: str
     credit_score: int
     credit_limit: int
-    base_interest_rate: Decimal
+    base_interest_rate: DecimalNumber
     grade_comparison: list[GradeOption]
 
 
 class LoanQuoteResponse(BaseModel):
     principal: int
     duration_months: int
-    interest_rate: Decimal
+    interest_rate: DecimalNumber
     monthly_payment: int
     total_repayment: int
     total_interest: int

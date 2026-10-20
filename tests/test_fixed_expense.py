@@ -13,6 +13,7 @@ from app.api.v1.fixed_expense.schema import FixedExpenseCreate, FixedExpenseUpda
 from app.api.v1.fixed_expense.service import FixedExpenseService
 from app.api.v1.user.model import User
 from app.core.exceptions import AppHTTPException
+from app.core.types import MAX_FIXED_EXPENSES
 from app.main import app
 
 OWNER_ID = 1
@@ -26,9 +27,10 @@ def make_fixed_expense(**overrides) -> FixedExpense:
     return FixedExpense(**defaults)
 
 
-def make_service(found: FixedExpense | None = None) -> tuple[FixedExpenseService, MagicMock]:
+def make_service(found: FixedExpense | None = None, count: int = 0) -> tuple[FixedExpenseService, MagicMock]:
     repository = MagicMock()
     repository.find_by_id.return_value = found
+    repository.count_by_user.return_value = count
     repository.update.side_effect = lambda fixed_expense, changes: fixed_expense
     repository.create.side_effect = lambda user_id, name, amount: make_fixed_expense(name=name, amount=amount)
     return FixedExpenseService(db=MagicMock(), repository=repository), repository
@@ -43,6 +45,27 @@ def test_create_passes_name_and_amount() -> None:
     service.create_fixed_expense(OWNER_ID, FixedExpenseCreate(name="통신비", amount=50_000))
 
     repository.create.assert_called_once_with(OWNER_ID, "통신비", 50_000)
+
+
+def test_create_allows_up_to_limit() -> None:
+    service, repository = make_service(count=MAX_FIXED_EXPENSES - 1)
+
+    service.create_fixed_expense(OWNER_ID, FixedExpenseCreate(name="통신비", amount=50_000))
+
+    repository.count_by_user.assert_called_once_with(OWNER_ID)
+    repository.create.assert_called_once()
+
+
+def test_create_rejects_when_limit_reached() -> None:
+    # 항목당 상한만으로는 개수가 무제한이라 턴의 고정지출 합계가 INT를 넘을 수 있다 (#74 리뷰)
+    service, repository = make_service(count=MAX_FIXED_EXPENSES)
+
+    with pytest.raises(AppHTTPException) as exc_info:
+        service.create_fixed_expense(OWNER_ID, FixedExpenseCreate(name="통신비", amount=50_000))
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.code == "FIXED_EXPENSE_LIMIT_EXCEEDED"
+    repository.create.assert_not_called()
 
 
 def test_update_changes_only_sent_fields() -> None:

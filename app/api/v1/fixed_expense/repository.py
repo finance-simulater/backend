@@ -10,6 +10,9 @@ class FixedExpenseRepository:
     def find_all_by_user(self, user_id: int) -> list[FixedExpense]:
         return self.db.query(FixedExpense).filter(FixedExpense.user_id == user_id).order_by(FixedExpense.id).all()
 
+    def count_by_user(self, user_id: int) -> int:
+        return self.db.query(FixedExpense).filter(FixedExpense.user_id == user_id).count()
+
     def find_by_id(self, fixed_expense_id: int) -> FixedExpense | None:
         return self.db.query(FixedExpense).filter(FixedExpense.id == fixed_expense_id).first()
 

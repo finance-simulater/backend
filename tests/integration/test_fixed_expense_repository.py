@@ -31,6 +31,17 @@ def test_find_all_by_user_returns_only_own_items_in_insert_order(db_session):
     assert [fe.id for fe in repository.find_all_by_user(owner.id)] == [first.id, second.id]
 
 
+def test_count_by_user_counts_only_own_items(db_session):
+    owner = make_user(db_session, email="owner@example.com", nickname="owner")
+    other = make_user(db_session, email="other@example.com", nickname="other")
+    repository = FixedExpenseRepository(db_session)
+    repository.create(owner.id, "월세", 500_000)
+    repository.create(owner.id, "통신비", 50_000)
+    repository.create(other.id, "보험료", 100_000)
+
+    assert repository.count_by_user(owner.id) == 2
+
+
 def test_update_changes_given_fields(db_session):
     user = make_user(db_session)
     repository = FixedExpenseRepository(db_session)

@@ -42,6 +42,7 @@ from app.api.v1.user.router import get_user_service
 from app.api.v1.user.service import UserService
 from app.cache import RedisNotReadyError
 from app.core.exceptions import bad_request, conflict, too_many_requests, unauthorized
+from app.core.types import MAX_FIXED_EXPENSES
 from app.health import router as health_router
 from app.main import app
 from tests.auth.factories import make_user
@@ -810,9 +811,10 @@ def make_fixed_expense(**overrides) -> FixedExpense:
     return FixedExpense(**defaults)
 
 
-def _override_fixed_expense(found: FixedExpense | None = None) -> None:
+def _override_fixed_expense(found: FixedExpense | None = None, count: int = 1) -> None:
     repository = MagicMock()
     repository.find_all_by_user.return_value = [make_fixed_expense()]
+    repository.count_by_user.return_value = count
     repository.find_by_id.return_value = found
     repository.create.side_effect = lambda user_id, name, amount: make_fixed_expense(
         id=11, user_id=user_id, name=name, amount=amount
@@ -853,6 +855,16 @@ def test_create_fixed_expense(client: TestClient, openapi_spec: SpecDict) -> Non
     response = client.post(FIXED_EXPENSES_PATH, json={"name": "통신비", "amount": 50_000})
 
     assert response.status_code == 201
+    assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSES_PATH, "post")
+
+
+def test_create_fixed_expense_limit_exceeded(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_fixed_expense(count=MAX_FIXED_EXPENSES)
+
+    response = client.post(FIXED_EXPENSES_PATH, json={"name": "통신비", "amount": 50_000})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "FIXED_EXPENSE_LIMIT_EXCEEDED"
     assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSES_PATH, "post")
 
 

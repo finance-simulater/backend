@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from app.api.v1.fixed_expense.model import FixedExpense
 from app.api.v1.fixed_expense.repository import FixedExpenseRepository
 from app.api.v1.fixed_expense.schema import FixedExpenseCreate, FixedExpenseUpdate
-from app.core.exceptions import not_found
+from app.core.exceptions import not_found, unprocessable
+from app.core.types import MAX_FIXED_EXPENSES
 
 
 class FixedExpenseService:
@@ -14,6 +15,13 @@ class FixedExpenseService:
         return self.repository.find_all_by_user(user_id)
 
     def create_fixed_expense(self, user_id: int, request: FixedExpenseCreate) -> FixedExpense:
+        # 락 없이 센 뒤 추가하므로 동시 요청이면 상한을 1~2개 넘을 수 있다. INT를 넘으려면 43개가
+        # 필요해 허용한다 — 턴 처리의 잔액 검사(INSUFFICIENT_BALANCE)가 기록 전에 한 번 더 막는다.
+        if self.repository.count_by_user(user_id) >= MAX_FIXED_EXPENSES:
+            raise unprocessable(
+                f"고정지출은 최대 {MAX_FIXED_EXPENSES}개까지 등록할 수 있습니다",
+                code="FIXED_EXPENSE_LIMIT_EXCEEDED",
+            )
         return self.repository.create(user_id, request.name, request.amount)
 
     def update_fixed_expense(self, user_id: int, fixed_expense_id: int, request: FixedExpenseUpdate) -> FixedExpense:

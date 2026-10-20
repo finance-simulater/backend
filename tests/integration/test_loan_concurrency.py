@@ -13,6 +13,7 @@ import pytest
 
 from app.api.v1.loan.repository import LoanRepository
 from app.api.v1.loan.service import LoanService
+from app.api.v1.simulation.repository import SimulationStateRepository
 from app.core.exceptions import AppHTTPException
 from tests.integration.concurrency import run_concurrently
 from tests.integration.factories import make_simulation_state, make_user
@@ -73,8 +74,11 @@ def test_apply_for_loan_concurrent_requests_only_one_becomes_active(real_session
     verify_session = session_factory()
     try:
         loans = LoanRepository(verify_session).find_all_by_user(user_id)
+        cash_balance = SimulationStateRepository(verify_session).find_by_user(user_id).cash_balance
     finally:
         verify_session.close()
 
     assert len(loans) == 1
     assert loans[0].status == "active"
+    # 원금은 성공한 1건만 입금된다 — 진 요청의 입금은 대출 생성과 함께 롤백된다
+    assert cash_balance == 5_000_000 + 1_000_000

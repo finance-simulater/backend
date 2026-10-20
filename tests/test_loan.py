@@ -33,7 +33,7 @@ def make_grade_policy(**overrides) -> CreditGradePolicy:
 
 
 def make_state(**overrides) -> SimulationState:
-    defaults = dict(user_id=1, current_turn=3, credit_score=70)
+    defaults = dict(user_id=1, current_turn=3, credit_score=70, cash_balance=0)
     defaults.update(overrides)
     return SimulationState(**defaults)
 
@@ -141,6 +141,26 @@ def test_apply_for_loan_creates_loan_with_schedule() -> None:
     assert loan.applied_credit_grade == "B"
     assert loan.started_turn == 3
     assert loan.remaining_balance == loan.total_repayment
+
+
+def test_apply_for_loan_deposits_principal_into_cash() -> None:
+    state = make_state(cash_balance=200_000)
+    service = make_service(state, make_grade_policy(credit_limit=3_000_000))
+
+    service.apply_for_loan(1, principal=1_000_000, duration_months=6)
+
+    assert state.cash_balance == 1_200_000
+    service.simulation_repository.find_by_user.assert_called_once_with(1, for_update=True)
+
+
+def test_apply_for_loan_rejected_by_limit_does_not_deposit() -> None:
+    state = make_state(cash_balance=200_000)
+    service = make_service(state, make_grade_policy(credit_limit=1_000_000))
+
+    with pytest.raises(AppHTTPException):
+        service.apply_for_loan(1, principal=2_000_000, duration_months=6)
+
+    assert state.cash_balance == 200_000
 
 
 def test_get_active_loan_status_raises_not_found_when_no_active_loan() -> None:

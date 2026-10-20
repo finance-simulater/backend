@@ -112,7 +112,8 @@ class LoanService:
         if self.repository.find_active_by_user(user_id) is not None:
             raise _active_loan_conflict()
 
-        simulation_state = get_simulation_state_or_404(self.simulation_repository, user_id)
+        # 원금을 현금 잔액에 입금하므로 동시 매수·턴 처리와 잔액 갱신이 겹치지 않게 잠근다
+        simulation_state = get_simulation_state_or_404(self.simulation_repository, user_id, for_update=True)
         grade_policy = get_grade_policy_or_404(self.credit_repository, simulation_state.credit_score)
 
         # AI 자동심사->신용등급별 한도 초과 여부 승인/거절 판단
@@ -148,6 +149,8 @@ class LoanService:
             )
             for installment_number in range(1, duration_months + 1)
         ]
+        # 원금은 신청 즉시 입금된다 (spec#21). 대출 생성과 같은 커밋이라 생성이 실패하면 함께 롤백된다.
+        simulation_state.cash_balance += principal
         try:
             return self.repository.create_with_schedule(loan, schedule)
         except IntegrityError as exc:

@@ -277,3 +277,28 @@ def create_expired_access_token() -> str:
         settings.secret_key,
         algorithm=settings.jwt_algorithm,
     )
+
+
+def test_signup_endpoint_rejects_salary_over_max(client: TestClient) -> None:
+    """급여 상한(5천만원) 초과는 DB INT 오류(500) 전에 422로 거절한다 (spec#19)."""
+    service = MagicMock(spec=AuthService)
+    app.dependency_overrides[get_auth_service] = lambda: service
+
+    try:
+        response = client.post(
+            "/api/v1/auth/signup",
+            json={
+                "email": "user@example.com",
+                "email_verification_token": "v" * 43,
+                "password": "password123",
+                "nickname": "tester",
+                "profile_image_seed": "tester",
+                "job_type": "employee",
+                "monthly_salary": 50_000_001,
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_auth_service, None)
+
+    assert response.status_code == 422
+    service.signup.assert_not_called()

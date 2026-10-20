@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 from pydantic import ConfigDict
 
-from app.core.types import UtcDatetime
+from app.core.types import MAX_MONTHLY_AMOUNT, UtcDatetime
 
 
 class UserCreate(BaseModel):
@@ -18,7 +18,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    monthly_salary: int = Field(ge=0)
+    monthly_salary: int = Field(ge=0, le=MAX_MONTHLY_AMOUNT)
 
 
 class UserResponse(BaseModel):

@@ -41,7 +41,17 @@ def test_patch_me_returns_updated_user(client: TestClient) -> None:
     assert response.json()["monthly_salary"] == 3_500_000
 
 
-@pytest.mark.parametrize("body", [{"monthly_salary": -1}, {}], ids=["negative", "missing"])
+def test_patch_me_accepts_max_salary(client: TestClient) -> None:
+    response = client.patch("/api/v1/users/me", json={"monthly_salary": 50_000_000})
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"monthly_salary": -1}, {}, {"monthly_salary": 50_000_001}],
+    ids=["negative", "missing", "over-max"],
+)
 def test_patch_me_rejects_invalid_salary(client: TestClient, body: dict) -> None:
     response = client.patch("/api/v1/users/me", json=body)
 

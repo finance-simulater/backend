@@ -30,6 +30,7 @@ def make_service(found: FixedExpense | None = None) -> tuple[FixedExpenseService
     repository = MagicMock()
     repository.find_by_id.return_value = found
     repository.update.side_effect = lambda fixed_expense, changes: fixed_expense
+    repository.create.side_effect = lambda user_id, name, amount: make_fixed_expense(name=name, amount=amount)
     return FixedExpenseService(db=MagicMock(), repository=repository), repository
 
 
@@ -106,8 +107,9 @@ def client() -> TestClient:
         {"name": "", "amount": 1_000},
         {"name": "x" * 51, "amount": 1_000},
         {"amount": 1_000},
+        {"name": "월세", "amount": 50_000_001},
     ],
-    ids=["amount-zero", "empty-name", "name-too-long", "missing-name"],
+    ids=["amount-zero", "empty-name", "name-too-long", "missing-name", "amount-over-max"],
 )
 def test_create_rejects_invalid_body(client: TestClient, body: dict) -> None:
     response = client.post("/api/v1/users/me/fixed-expenses", json=body)
@@ -115,10 +117,22 @@ def test_create_rejects_invalid_body(client: TestClient, body: dict) -> None:
     assert response.status_code == 422
 
 
-def test_update_rejects_zero_amount(client: TestClient) -> None:
-    response = client.patch("/api/v1/users/me/fixed-expenses/10", json={"amount": 0})
+def test_create_accepts_max_amount(client: TestClient) -> None:
+    response = client.post("/api/v1/users/me/fixed-expenses", json={"name": "월세", "amount": 50_000_000})
+
+    assert response.status_code == 201
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"amount": 0}, {"amount": 50_000_001}],
+    ids=["amount-zero", "amount-over-max"],
+)
+def test_update_rejects_invalid_body(client: TestClient, body: dict) -> None:
+    response = client.patch("/api/v1/users/me/fixed-expenses/10", json=body)
 
     assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_REQUEST"
 
 
 def test_delete_returns_204(client: TestClient) -> None:

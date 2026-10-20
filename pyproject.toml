@@ -35,5 +35,6 @@ dev = [
 markers = [
     "integration: 실제 MySQL에 붙는 repository 통합 테스트",
     "contract: openapi.yaml(spec 서브모듈) ↔ 실제 API 라우트/응답 계약 테스트",
+    "e2e: 실제 MySQL·Redis 위에서 회원가입부터 턴 진행까지 API 흐름 테스트",
 ]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not e2e'"

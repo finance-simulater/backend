@@ -25,6 +25,9 @@ from app.api.v1.auth.service import AuthResult, AuthService
 from app.api.v1.credit.model import CreditGradePolicy, CreditHistory
 from app.api.v1.credit.router import get_credit_service
 from app.api.v1.credit.service import CreditService
+from app.api.v1.fixed_expense.model import FixedExpense
+from app.api.v1.fixed_expense.router import get_fixed_expense_service
+from app.api.v1.fixed_expense.service import FixedExpenseService
 from app.api.v1.loan.model import Loan, RepaymentSchedule
 from app.api.v1.loan.router import get_loan_service
 from app.api.v1.loan.service import LoanService
@@ -35,6 +38,8 @@ from app.api.v1.stock.model import StockHolding
 from app.api.v1.stock.router import get_stock_service
 from app.api.v1.stock.service import StockService
 from app.api.v1.user.model import User
+from app.api.v1.user.router import get_user_service
+from app.api.v1.user.service import UserService
 from app.cache import RedisNotReadyError
 from app.core.exceptions import bad_request, conflict, too_many_requests, unauthorized
 from app.health import router as health_router
@@ -793,6 +798,100 @@ def test_get_loan_schedule(client: TestClient, openapi_spec: SpecDict) -> None:
     assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/{loan_id}/schedule", "get")
 
 
+# ── users ───────────────────────────────────────
+
+FIXED_EXPENSES_PATH = "/api/v1/users/me/fixed-expenses"
+FIXED_EXPENSE_PATH = "/api/v1/users/me/fixed-expenses/{fixed_expense_id}"
+
+
+def make_fixed_expense(**overrides) -> FixedExpense:
+    defaults = dict(id=10, user_id=USER_ID, name="월세", amount=500_000, created_at=DB_NOW, updated_at=DB_NOW)
+    defaults.update(overrides)
+    return FixedExpense(**defaults)
+
+
+def _override_fixed_expense(found: FixedExpense | None = None) -> None:
+    repository = MagicMock()
+    repository.find_all_by_user.return_value = [make_fixed_expense()]
+    repository.find_by_id.return_value = found
+    repository.create.side_effect = lambda user_id, name, amount: make_fixed_expense(
+        id=11, user_id=user_id, name=name, amount=amount
+    )
+    repository.update.side_effect = lambda fixed_expense, changes: fixed_expense
+    service = FixedExpenseService(db=MagicMock(), repository=repository)
+    app.dependency_overrides[get_fixed_expense_service] = lambda: service
+    _login()
+
+
+def test_update_me(client: TestClient, openapi_spec: SpecDict) -> None:
+    repository = MagicMock()
+    repository.update_monthly_salary.side_effect = lambda user, salary: make_user(
+        monthly_salary=salary, created_at=DB_NOW, updated_at=DB_NOW
+    )
+    app.dependency_overrides[get_user_service] = lambda: UserService(db=MagicMock(), repository=repository)
+    app.dependency_overrides[get_current_user] = lambda: make_user(created_at=DB_NOW, updated_at=DB_NOW)
+
+    response = client.patch("/api/v1/users/me", json={"monthly_salary": 3_500_000})
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/users/me", "patch")
+
+
+def test_list_fixed_expenses(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_fixed_expense()
+
+    response = client.get(FIXED_EXPENSES_PATH)
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSES_PATH, "get")
+
+
+def test_create_fixed_expense(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_fixed_expense()
+
+    response = client.post(FIXED_EXPENSES_PATH, json={"name": "통신비", "amount": 50_000})
+
+    assert response.status_code == 201
+    assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSES_PATH, "post")
+
+
+def test_update_fixed_expense(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_fixed_expense(found=make_fixed_expense())
+
+    response = client.patch("/api/v1/users/me/fixed-expenses/10", json={"amount": 550_000})
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSE_PATH, "patch")
+
+
+def test_update_fixed_expense_not_found(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_fixed_expense(found=None)
+
+    response = client.patch("/api/v1/users/me/fixed-expenses/10", json={"amount": 550_000})
+
+    assert response.status_code == 404
+    assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSE_PATH, "patch")
+
+
+def test_delete_fixed_expense(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_fixed_expense(found=make_fixed_expense())
+
+    response = client.delete("/api/v1/users/me/fixed-expenses/10")
+
+    assert response.status_code == 204
+    assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSE_PATH, "delete")
+
+
+def test_delete_fixed_expense_of_other_user_returns_404(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_fixed_expense(found=make_fixed_expense(user_id=USER_ID + 1))
+
+    response = client.delete("/api/v1/users/me/fixed-expenses/10")
+
+    assert response.status_code == 404
+    assert_response_matches_spec(openapi_spec, response, FIXED_EXPENSE_PATH, "delete")
+
+
 # ── 공통 에러 응답 (spec#12) ─────────────────────
 
 
@@ -854,6 +953,15 @@ def test_unauthenticated_request_returns_401(
         ("post", "/api/v1/stocks/sell", "/api/v1/stocks/sell", {"stock_type": "index", "amount": 0}),
         ("post", "/api/v1/auth/login", "/api/v1/auth/login", {"email": "not-an-email", "password": "x"}),
         ("post", "/api/v1/auth/email/verify", "/api/v1/auth/email/verify", {"email": "user@example.com", "code": "12"}),
+        ("patch", "/api/v1/users/me", "/api/v1/users/me", {"monthly_salary": -1}),
+        ("post", "/api/v1/users/me/fixed-expenses", "/api/v1/users/me/fixed-expenses", {"name": "월세", "amount": 0}),
+        (
+            "patch",
+            "/api/v1/users/me/fixed-expenses/{fixed_expense_id}",
+            "/api/v1/users/me/fixed-expenses/1",
+            {"amount": 0},
+        ),
+        ("delete", "/api/v1/users/me/fixed-expenses/{fixed_expense_id}", "/api/v1/users/me/fixed-expenses/abc", None),
     ],
 )
 def test_invalid_request_returns_422(

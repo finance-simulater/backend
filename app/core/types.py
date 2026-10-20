@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Annotated
 
-from pydantic import AfterValidator
+from pydantic import AfterValidator, PlainSerializer
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -18,3 +19,9 @@ def _as_utc(value: datetime) -> datetime:
 
 # 응답 스키마의 datetime 필드용 — `...Z`(UTC 오프셋 포함)로 직렬화된다
 UtcDatetime = Annotated[datetime, AfterValidator(_as_utc)]
+
+
+# 응답 스키마의 금리(%) 필드용 — 계산은 Decimal로 하고 JSON에는 숫자(5.5)로 직렬화한다.
+# Pydantic v2는 Decimal을 JSON에서 문자열("5.50")로 내보내 스펙의 `type: number`를 위반한다(#64).
+# 금리는 NUMERIC(4,2)라 float 변환으로 표시상 손실이 없다.
+DecimalNumber = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]

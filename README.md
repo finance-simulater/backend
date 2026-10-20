@@ -81,9 +81,10 @@ flowchart LR
 ```bash
 uv run pytest                  # 단위 · 계약 테스트
 uv run pytest -m integration   # MySQL 통합 테스트 (docker compose 필요)
+uv run pytest -m e2e           # 회원가입 → 24턴 완료 API 흐름 테스트 (MySQL·Redis 필요)
 ```
 
-PR마다 GitHub Actions가 두 테스트를 모두 실행합니다 (MySQL 8.0 서비스 컨테이너).
+PR마다 GitHub Actions가 세 테스트를 모두 실행합니다 (MySQL 8.0 · Redis 7 서비스 컨테이너).
 
 ## 🚀 로컬 실행
 

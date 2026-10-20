@@ -100,7 +100,10 @@ def _resolve_response(spec: SpecDict, response_def: SpecDict) -> SpecDict:
         return response_def
     prefix = "#/components/responses/"
     assert ref.startswith(prefix), f"지원하지 않는 response $ref: {ref}"
-    return spec["components"]["responses"][ref.removeprefix(prefix)]
+    name = ref.removeprefix(prefix)
+    defined = spec["components"].get("responses", {})
+    assert name in defined, f"openapi.yaml components/responses에 {name}이 없음 ($ref: {ref}, 정의된 응답: {sorted(defined)})"
+    return defined[name]
 
 
 def _json_path(error: Any) -> str:

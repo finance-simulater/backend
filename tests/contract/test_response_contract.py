@@ -8,6 +8,7 @@
 tz-aware로 만들면 실제보다 깨끗한 데이터로 `date-time` 포맷 위반을 놓친다 (#43).
 """
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock
@@ -828,8 +829,9 @@ def test_unauthenticated_request_returns_401(
     client: TestClient, openapi_spec: SpecDict, bearer_operation: tuple[str, str]
 ) -> None:
     path, method = bearer_operation
-    # 경로 파라미터는 모두 정수 id라 1로 채운다. 인증 의존성이 body 검증보다 먼저 실패하므로 body는 보내지 않는다.
-    url = path.replace("{turn_number}", "1").replace("{loan_id}", "1")
+    # 경로 파라미터는 모두 정수 id라 이름과 무관하게 1로 채운다 — 새 경로 파라미터가 생겨도 그대로 동작한다.
+    # 인증 의존성이 body 검증보다 먼저 실패하므로 body는 보내지 않는다.
+    url = re.sub(r"\{[^}]+\}", "1", path)
 
     response = client.request(method, url)
 

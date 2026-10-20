@@ -53,3 +53,14 @@ def test_response_ref_is_resolved_and_body_validated() -> None:
 
     with pytest.raises(AssertionError, match="code"):
         assert_response_matches_spec(spec, response, "/x", "get")
+
+
+def test_response_ref_to_undefined_component_fails_with_message() -> None:
+    spec = {
+        "paths": {"/x": {"get": {"responses": {"401": {"$ref": "#/components/responses/Missing"}}}}},
+        "components": {"responses": {}},
+    }
+    response = SimpleNamespace(status_code=401, json=lambda: {})
+
+    with pytest.raises(AssertionError, match="components/responses에 Missing이 없음"):
+        assert_response_matches_spec(spec, response, "/x", "get")

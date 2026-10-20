@@ -22,7 +22,7 @@ def get_loan_service(db: Session = Depends(get_db)) -> LoanService:
     return LoanService(db)
 
 
-@router.get("/", response_model=list[LoanResponse])
+@router.get("", response_model=list[LoanResponse])
 async def list_loans(
     current_user: User = Depends(get_current_user),
     service: LoanService = Depends(get_loan_service),

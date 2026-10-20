@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.api.v1.simulation.model import SimulationState
 from app.api.v1.user.model import User
 from app.api.v1.user.schema import UserCreate
 
@@ -23,6 +24,7 @@ class UserRepository:
         password_hash: str | None,
         *,
         is_email_verified: bool = False,
+        simulation_state: SimulationState | None = None,
     ) -> User:
         user = User(
             email=str(user_create.email),
@@ -35,6 +37,9 @@ class UserRepository:
             provider=user_create.provider,
             social_id=user_create.social_id,
         )
+        # 관계에 붙여 두면 사용자와 같은 커밋으로 INSERT된다 — 상태 없는 사용자가 남지 않는다
+        if simulation_state is not None:
+            user.simulation_state = simulation_state
         self.db.add(user)
         try:
             self.db.commit()

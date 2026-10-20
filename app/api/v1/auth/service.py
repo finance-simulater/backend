@@ -20,6 +20,7 @@ from app.api.v1.auth.schema import (
     SignupRequest,
     TokenResponse,
 )
+from app.api.v1.simulation.service import new_simulation_state, today_kst
 from app.api.v1.user.model import User
 from app.api.v1.user.repository import UserRepository
 from app.api.v1.user.schema import UserCreate
@@ -94,6 +95,7 @@ class AuthService:
                 user_create,
                 password_hash=hash_password(signup_request.password),
                 is_email_verified=True,
+                simulation_state=new_simulation_state(signup_request.monthly_salary, today_kst()),
             )
         except IntegrityError as exc:
             raise conflict(

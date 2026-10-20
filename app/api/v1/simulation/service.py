@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,12 @@ from app.api.v1.simulation.schema import ConsumeLevel, SimulationStateResponse, 
 from app.api.v1.stock.repository import StockHoldingRepository
 from app.core.exceptions import conflict, not_found, unprocessable
 from app.core.scoring import clamp_score
+
+# 한국은 서머타임이 없어 고정 오프셋으로 충분하다 — 컨테이너에 tzdata가 없어도 동작한다.
+KST = timezone(timedelta(hours=9))
+
+# 가입 시 신용점수·소비점수 시작값 (C등급)
+INITIAL_SCORE = 50
 
 # 소비체크 수준별 지출액 = 월급 대비 % (카테고리 3개 각각 독립 적용)
 CONSUME_LEVEL_EXPENSE_RATIO: dict[ConsumeLevel, int] = {
@@ -52,6 +58,32 @@ CATEGORY_LABELS = {
     "leisure_choice": "여가",
 }
 
+
+
+def next_year_month(year: int, month: int) -> tuple[int, int]:
+    return (year, month + 1) if month < 12 else (year + 1, 1)
+
+
+def today_kst() -> date:
+    return datetime.now(KST).date()
+
+
+def new_simulation_state(monthly_salary: int, signup_date: date) -> SimulationState:
+    """가입 시 시작 상태 (spec#21).
+
+    가입한 달은 월급만 들어오고 지출이 없으므로 그 달 월급을 시작 현금으로 넣고, 턴1은 가입한 다음 달로
+    잡는다 — 턴1을 가입한 달로 잡으면 그 달 월급이 턴 처리에서 한 번 더 입금된다.
+    """
+    year, month = next_year_month(signup_date.year, signup_date.month)
+    return SimulationState(
+        current_turn=1,
+        current_year=year,
+        current_month=month,
+        cash_balance=monthly_salary,
+        credit_score=INITIAL_SCORE,
+        consume_score=INITIAL_SCORE,
+        status="active",
+    )
 
 class SimulationService:
     def __init__(
@@ -217,7 +249,7 @@ class SimulationService:
         credit_score_delta = credit_score - state.credit_score
         total_asset_after = cash_balance + self.stock_repository.sum_current_value_by_user(user_id)
 
-        next_month, next_year = (month + 1, year) if month < 12 else (1, year + 1)
+        next_year, next_month = next_year_month(year, month)
 
         turn = self.turn_repository.create(
             Turn(

@@ -158,3 +158,29 @@ def test_get_quote_rejects_unsupported_duration() -> None:
     response = client.get("/api/v1/loans/quote", params={"principal": 1_000_000, "duration_months": 5})
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(("duration_months", "expected_status"), [(6, 201), (5, 422)])
+def test_apply_validates_duration_with_shared_loan_duration(duration_months: int, expected_status: int) -> None:
+    """신청 body도 견적 쿼리와 같은 LoanDuration으로 검증한다 (#67)."""
+    repository = MagicMock()
+    repository.find_active_by_user.return_value = None
+    repository.create_with_schedule.side_effect = lambda loan, schedule: make_loan(loan_id=7, user_id=OWNER_ID)
+    simulation_repository = MagicMock()
+    simulation_repository.find_by_user.return_value = MagicMock(credit_score=70, current_turn=1)
+    credit_repository = MagicMock()
+    credit_repository.find_by_score.return_value = MagicMock(
+        grade="B", credit_limit=3_000_000, base_interest_rate=Decimal("5.5")
+    )
+    app.dependency_overrides[get_loan_service] = lambda: LoanService(
+        db=MagicMock(),
+        repository=repository,
+        credit_repository=credit_repository,
+        simulation_repository=simulation_repository,
+    )
+    app.dependency_overrides[get_current_user] = lambda: User(id=OWNER_ID)
+
+    client = TestClient(app)
+    response = client.post("/api/v1/loans/apply", json={"principal": 1_000_000, "duration_months": duration_months})
+
+    assert response.status_code == expected_status

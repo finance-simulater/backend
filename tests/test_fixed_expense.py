@@ -54,6 +54,16 @@ def test_update_changes_only_sent_fields() -> None:
     assert repository.update.call_args.args[1] == {"amount": 600_000}
 
 
+def test_name_is_stripped_before_saving() -> None:
+    service, repository = make_service(found=make_fixed_expense())
+
+    service.create_fixed_expense(OWNER_ID, FixedExpenseCreate(name="  통신비 ", amount=50_000))
+    service.update_fixed_expense(OWNER_ID, 10, FixedExpenseUpdate(name=" 관리비  "))
+
+    repository.create.assert_called_once_with(OWNER_ID, "통신비", 50_000)
+    assert repository.update.call_args.args[1] == {"name": "관리비"}
+
+
 def test_update_ignores_fields_not_sent() -> None:
     service, repository = make_service(found=make_fixed_expense())
 
@@ -116,8 +126,9 @@ def client() -> TestClient:
         {"name": "x" * 51, "amount": 1_000},
         {"amount": 1_000},
         {"name": "월세", "amount": 50_000_001},
+        {"name": "   ", "amount": 1_000},
     ],
-    ids=["amount-zero", "empty-name", "name-too-long", "missing-name", "amount-over-max"],
+    ids=["amount-zero", "empty-name", "name-too-long", "missing-name", "amount-over-max", "blank-name"],
 )
 def test_create_rejects_invalid_body(client: TestClient, body: dict) -> None:
     response = client.post("/api/v1/users/me/fixed-expenses", json=body)
@@ -133,8 +144,8 @@ def test_create_accepts_max_amount(client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     "body",
-    [{"amount": 0}, {"amount": 50_000_001}, {"amount": None}, {"name": None}],
-    ids=["amount-zero", "amount-over-max", "null-amount", "null-name"],
+    [{"amount": 0}, {"amount": 50_000_001}, {"amount": None}, {"name": None}, {"name": "   "}],
+    ids=["amount-zero", "amount-over-max", "null-amount", "null-name", "blank-name"],
 )
 def test_update_rejects_invalid_body(client: TestClient, body: dict) -> None:
     # 명시적 null은 "값 삭제"로 오해되지 않도록 무시하지 않고 422로 거절한다 (spec#19)

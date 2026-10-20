@@ -1,10 +1,15 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.core.types import MAX_MONTHLY_AMOUNT, UtcDatetime
 
+# 앞뒤 공백을 제거한 뒤 길이를 검증한다 — 공백만("   ")이면 min_length=1에 걸려 422, " 월세 "는 "월세"로 저장 (spec#19)
+FixedExpenseName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+
 
 class FixedExpenseCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=50)
+    name: FixedExpenseName
     amount: int = Field(ge=1, le=MAX_MONTHLY_AMOUNT)
 
 
@@ -15,7 +20,7 @@ class FixedExpenseUpdate(BaseModel):
     아래 validator는 클라이언트가 실제로 null을 보낸 경우에만 실행된다.
     """
 
-    name: str | None = Field(default=None, min_length=1, max_length=50)
+    name: FixedExpenseName | None = None
     amount: int | None = Field(default=None, ge=1, le=MAX_MONTHLY_AMOUNT)
 
     @field_validator("name", "amount", mode="before")

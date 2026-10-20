@@ -1,8 +1,12 @@
 """UserRepository 통합 테스트"""
 
+from datetime import date
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.api.v1.simulation.model import SimulationState
+from app.api.v1.simulation.service import new_simulation_state
 from app.api.v1.user.model import User
 from app.api.v1.user.repository import UserRepository
 from app.api.v1.user.schema import UserCreate
@@ -31,6 +35,28 @@ def test_create_persists_user_and_defaults(db_session):
     reloaded = db_session.get(User, created.id)
     assert reloaded is not None
     assert reloaded.email == "new-user@example.com"
+
+
+def test_create_persists_simulation_state_with_user(db_session):
+    repository = UserRepository(db_session)
+    user_create = UserCreate(
+        email="with-state@example.com",
+        password="password123",
+        nickname="with-state",
+        profile_image_seed="seed",
+        job_type="employee",
+        monthly_salary=3_000_000,
+    )
+
+    created = repository.create(
+        user_create,
+        password_hash="hashed",
+        simulation_state=new_simulation_state(3_000_000, date(2026, 10, 21)),
+    )
+
+    state = db_session.query(SimulationState).filter(SimulationState.user_id == created.id).one()
+    assert (state.current_turn, state.current_year, state.current_month) == (1, 2026, 11)
+    assert (state.cash_balance, state.credit_score, state.consume_score) == (3_000_000, 50, 50)
 
 
 def test_find_by_email_returns_none_when_missing(db_session):

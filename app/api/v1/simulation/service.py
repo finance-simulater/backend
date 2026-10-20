@@ -59,7 +59,6 @@ CATEGORY_LABELS = {
 }
 
 
-
 def next_year_month(year: int, month: int) -> tuple[int, int]:
     return (year, month + 1) if month < 12 else (year + 1, 1)
 
@@ -84,6 +83,7 @@ def new_simulation_state(monthly_salary: int, signup_date: date) -> SimulationSt
         consume_score=INITIAL_SCORE,
         status="active",
     )
+
 
 class SimulationService:
     def __init__(

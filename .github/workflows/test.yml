@@ -44,6 +44,16 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
+      # E2E 테스트용 — 회원가입·토큰이 실제 Redis에 저장·조회되는 흐름을 검증한다 (#85)
+      redis:
+        image: redis:7.0-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
 
     steps:
       - name: Checkout
@@ -108,3 +118,6 @@ jobs:
 
       - name: Run integration tests (real MySQL)
         run: uv run pytest -q -m integration
+
+      - name: Run E2E tests (real MySQL·Redis)
+        run: uv run pytest -q -m e2e

@@ -12,6 +12,7 @@ from app.api.v1.simulation.schema import TurnChoiceRequest
 from app.api.v1.simulation.service import SimulationService
 from app.api.v1.user.model import User
 from app.core.exceptions import AppHTTPException
+from app.core.types import MAX_MONTHLY_AMOUNT
 
 
 def make_state(**overrides) -> SimulationState:
@@ -303,6 +304,27 @@ def test_advance_turn_rejects_when_expenses_exceed_balance() -> None:
     # 잔액 초과 시 상태/지출이 변경되지 않아야 함
     assert state.current_turn == 1
     assert state.consume_score == 50
+    service.expense_repository.create_many.assert_not_called()
+    service.turn_repository.create.assert_not_called()
+
+
+def test_advance_turn_rejects_fixed_expense_total_beyond_int_before_writing() -> None:
+    """고정지출은 항목당 상한(5천만원)만 있고 개수 제한이 없다 (#71 리뷰).
+
+    합계가 INT(약 21억)를 넘어도, 잔액 검사(INSUFFICIENT_BALANCE)가 DB 기록보다 먼저라 500이 아니라
+    422로 거절된다. 저장되는 fixed_expense_total은 항상 '기존 잔액 + 급여' 이하라 INT 범위 안에 든다.
+    """
+    state = make_state(cash_balance=24 * MAX_MONTHLY_AMOUNT)  # 24턴 동안 최대 급여를 한 푼도 안 쓴 최악의 잔액
+    user = User(id=1, monthly_salary=MAX_MONTHLY_AMOUNT)
+    fixed_expenses = [FixedExpense(name=f"항목{i}", amount=MAX_MONTHLY_AMOUNT) for i in range(50)]  # 합계 25억
+    service = make_service(state, user, fixed_expenses=fixed_expenses)
+
+    with pytest.raises(AppHTTPException) as exc_info:
+        service.advance_turn(
+            1, TurnChoiceRequest(food_choice="save", shopping_choice="save", leisure_choice="save")
+        )
+
+    assert exc_info.value.code == "INSUFFICIENT_BALANCE"
     service.expense_repository.create_many.assert_not_called()
     service.turn_repository.create.assert_not_called()
 

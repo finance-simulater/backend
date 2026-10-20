@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
 from app.api.v1.user.schema import UserResponse
+from app.core.types import MAX_MONTHLY_AMOUNT
 
 
 class SignupRequest(BaseModel):
@@ -12,7 +13,7 @@ class SignupRequest(BaseModel):
     nickname: str = Field(min_length=1, max_length=50)
     profile_image_seed: str = Field(min_length=1, max_length=50)
     job_type: Literal["employee", "freelancer", "other"]
-    monthly_salary: int = Field(ge=0)
+    monthly_salary: int = Field(ge=0, le=MAX_MONTHLY_AMOUNT)
 
 
 class LoginRequest(BaseModel):

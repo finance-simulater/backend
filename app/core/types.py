@@ -25,3 +25,13 @@ UtcDatetime = Annotated[datetime, AfterValidator(_as_utc)]
 # Pydantic v2는 Decimal을 JSON에서 문자열("5.50")로 내보내 스펙의 `type: number`를 위반한다(#64).
 # 금리는 NUMERIC(4,2)라 float 변환으로 표시상 손실이 없다.
 DecimalNumber = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
+
+
+# 급여·고정지출 등 월 금액 입력 상한(원). 금액 컬럼(users·fixed_expenses·simulation_state·turns)이 모두
+# 32bit INT(최대 약 21억)인데, cash_balance는 24턴 동안 급여가 누적되므로 INT 한계가 아니라
+# 24턴 누적(최대 12억)이 범위 안에 드는 값으로 정한다 (spec#19, #74).
+MAX_MONTHLY_AMOUNT = 50_000_000
+
+# 사용자당 고정지출 개수 상한. 항목당 상한(MAX_MONTHLY_AMOUNT)만으로는 개수가 무제한이라 턴의
+# fixed_expense_total(INT)이 넘칠 수 있다 → 5천만원 × 30개 = 15억으로 INT 안에 들게 한다 (spec#20, #74).
+MAX_FIXED_EXPENSES = 30

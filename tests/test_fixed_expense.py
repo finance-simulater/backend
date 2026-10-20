@@ -54,6 +54,14 @@ def test_update_changes_only_sent_fields() -> None:
     assert repository.update.call_args.args[1] == {"amount": 600_000}
 
 
+def test_update_ignores_fields_not_sent() -> None:
+    service, repository = make_service(found=make_fixed_expense())
+
+    service.update_fixed_expense(OWNER_ID, 10, FixedExpenseUpdate.model_validate({"name": "관리비"}))
+
+    assert repository.update.call_args.args[1] == {"name": "관리비"}
+
+
 def test_update_with_empty_body_returns_current_without_writing() -> None:
     current = make_fixed_expense()
     service, repository = make_service(found=current)
@@ -125,14 +133,22 @@ def test_create_accepts_max_amount(client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     "body",
-    [{"amount": 0}, {"amount": 50_000_001}],
-    ids=["amount-zero", "amount-over-max"],
+    [{"amount": 0}, {"amount": 50_000_001}, {"amount": None}, {"name": None}],
+    ids=["amount-zero", "amount-over-max", "null-amount", "null-name"],
 )
 def test_update_rejects_invalid_body(client: TestClient, body: dict) -> None:
+    # 명시적 null은 "값 삭제"로 오해되지 않도록 무시하지 않고 422로 거절한다 (spec#19)
     response = client.patch("/api/v1/users/me/fixed-expenses/10", json=body)
 
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_REQUEST"
+
+
+def test_update_null_error_message_does_not_echo_input(client: TestClient) -> None:
+    response = client.patch("/api/v1/users/me/fixed-expenses/10", json={"amount": None})
+
+    assert response.json()["detail"].startswith("body.amount: ")
+    assert "None" not in response.json()["detail"]
 
 
 def test_delete_returns_204(client: TestClient) -> None:

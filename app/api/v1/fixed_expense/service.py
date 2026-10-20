@@ -18,7 +18,7 @@ class FixedExpenseService:
 
     def update_fixed_expense(self, user_id: int, fixed_expense_id: int, request: FixedExpenseUpdate) -> FixedExpense:
         fixed_expense = self._get_owned_or_404(user_id, fixed_expense_id)
-        changes = request.model_dump(exclude_none=True)
+        changes = request.model_dump(exclude_unset=True)
         if not changes:
             return fixed_expense
         return self.repository.update(fixed_expense, changes)

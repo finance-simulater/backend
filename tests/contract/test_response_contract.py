@@ -8,7 +8,9 @@
 tz-aware로 만들면 실제보다 깨끗한 데이터로 `date-time` 포맷 위반을 놓친다 (#43).
 """
 
+import re
 from datetime import datetime
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,17 +18,35 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 from app.api.v1.auth.dependencies import get_current_user
+from app.api.v1.auth.email_verification_service import EmailVerificationResult
+from app.api.v1.auth.router import get_auth_service
+from app.api.v1.auth.schema import TokenResponse
+from app.api.v1.auth.service import AuthResult, AuthService
 from app.api.v1.credit.model import CreditGradePolicy, CreditHistory
 from app.api.v1.credit.router import get_credit_service
 from app.api.v1.credit.service import CreditService
+from app.api.v1.loan.model import Loan, RepaymentSchedule
+from app.api.v1.loan.router import get_loan_service
+from app.api.v1.loan.service import LoanService
 from app.api.v1.simulation.model import SimulationState, Turn
 from app.api.v1.simulation.router import get_simulation_service
 from app.api.v1.simulation.service import SimulationService
+from app.api.v1.stock.model import StockHolding
+from app.api.v1.stock.router import get_stock_service
+from app.api.v1.stock.service import StockService
 from app.api.v1.user.model import User
 from app.cache import RedisNotReadyError
+from app.core.exceptions import bad_request, conflict, too_many_requests, unauthorized
 from app.health import router as health_router
 from app.main import app
-from tests.contract.conftest import SpecDict, assert_response_matches_spec
+from tests.auth.factories import make_user
+from tests.contract.conftest import (
+    SPEC_PATH,
+    SpecDict,
+    assert_response_matches_spec,
+    load_openapi_spec,
+    spec_operations,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -336,3 +356,513 @@ def test_get_credit_history_not_found(client: TestClient, openapi_spec: SpecDict
 
     assert response.status_code == 404
     assert_response_matches_spec(openapi_spec, response, "/api/v1/credit/history", "get")
+
+
+# ── auth ────────────────────────────────────────
+# AuthService는 Redis·메일 발송에 의존하므로 서비스 자체를 목으로 바꾸고, 라우터의 응답 직렬화만 대조한다.
+
+SIGNUP_BODY = {
+    "email": "user@example.com",
+    "email_verification_token": "v" * 43,
+    "password": "password123",
+    "nickname": "tester",
+    "profile_image_seed": "tester",
+    "job_type": "employee",
+    "monthly_salary": 3_000_000,
+}
+LOGIN_BODY = {"email": "user@example.com", "password": "password123"}
+
+
+def _override_auth() -> MagicMock:
+    service = MagicMock(spec=AuthService)
+    app.dependency_overrides[get_auth_service] = lambda: service
+    return service
+
+
+def _auth_result() -> AuthResult:
+    return AuthResult(
+        user=make_user(created_at=DB_NOW, updated_at=DB_NOW),
+        tokens=TokenResponse(access_token="access-token", expires_in=900),
+        refresh_token="refresh-token",
+    )
+
+
+def test_send_verification_email(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_auth()
+
+    response = client.post("/api/v1/auth/email/send", json={"email": "user@example.com"})
+
+    assert response.status_code == 202
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/email/send", "post")
+
+
+def test_send_verification_email_rate_limited(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.send_verification_email.side_effect = too_many_requests("wait", "VERIFICATION_EMAIL_RATE_LIMITED")
+
+    response = client.post("/api/v1/auth/email/send", json={"email": "user@example.com"})
+
+    assert response.status_code == 429
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/email/send", "post")
+
+
+def test_verify_email(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.verify_email.return_value = EmailVerificationResult(token="v" * 43, expires_in=1800)
+
+    response = client.post("/api/v1/auth/email/verify", json={"email": "user@example.com", "code": "123456"})
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/email/verify", "post")
+
+
+def test_verify_email_invalid_code(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.verify_email.side_effect = bad_request("invalid", "INVALID_VERIFICATION_CODE")
+
+    response = client.post("/api/v1/auth/email/verify", json={"email": "user@example.com", "code": "000000"})
+
+    assert response.status_code == 400
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/email/verify", "post")
+
+
+def test_signup(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.signup.return_value = _auth_result()
+
+    response = client.post("/api/v1/auth/signup", json=SIGNUP_BODY)
+
+    assert response.status_code == 201
+    assert "refresh_token=" in response.headers["set-cookie"]
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/signup", "post")
+
+
+def test_signup_conflict(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.signup.side_effect = conflict("exists", "EMAIL_ALREADY_EXISTS")
+
+    response = client.post("/api/v1/auth/signup", json=SIGNUP_BODY)
+
+    assert response.status_code == 409
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/signup", "post")
+
+
+def test_login(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.login.return_value = _auth_result()
+
+    response = client.post("/api/v1/auth/login", json=LOGIN_BODY)
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/login", "post")
+
+
+def test_login_invalid_credentials(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.login.side_effect = unauthorized("invalid", "INVALID_CREDENTIALS")
+
+    response = client.post("/api/v1/auth/login", json=LOGIN_BODY)
+
+    assert response.status_code == 401
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/login", "post")
+
+
+def test_refresh(client: TestClient, openapi_spec: SpecDict) -> None:
+    service = _override_auth()
+    service.refresh.return_value = _auth_result()
+    client.cookies.set("refresh_token", "refresh-token")
+
+    response = client.post("/api/v1/auth/refresh")
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/refresh", "post")
+
+
+def test_refresh_without_cookie(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_auth()
+
+    response = client.post("/api/v1/auth/refresh")
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "REFRESH_TOKEN_REQUIRED"
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/refresh", "post")
+
+
+def test_logout(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_auth()
+
+    response = client.post("/api/v1/auth/logout")
+
+    assert response.status_code == 204
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/logout", "post")
+
+
+def test_me(client: TestClient, openapi_spec: SpecDict) -> None:
+    app.dependency_overrides[get_current_user] = lambda: make_user(created_at=DB_NOW, updated_at=DB_NOW)
+
+    response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/auth/me", "get")
+
+
+# ── investment ──────────────────────────────────
+
+
+def make_holding(**overrides) -> StockHolding:
+    defaults = dict(id=1, user_id=USER_ID, stock_type="high_vol", principal=100_000, current_value=120_000)
+    defaults.update(overrides)
+    return StockHolding(**defaults)
+
+
+def _override_stock(state: SimulationState | None, holding: StockHolding | None = None) -> MagicMock:
+    repository = MagicMock()
+    repository.find_simulation_state.return_value = state
+    repository.find_all_by_user.return_value = [holding] if holding else []
+    repository.find_by_user_and_type.return_value = holding
+    repository.create.side_effect = lambda user_id, stock_type, amount: make_holding(
+        stock_type=stock_type, principal=amount, current_value=amount
+    )
+    repository.update_holding.side_effect = lambda h, principal, current_value: make_holding(
+        id=h.id, stock_type=h.stock_type, principal=principal, current_value=current_value
+    )
+    service = StockService(db=MagicMock(), repository=repository)
+    app.dependency_overrides[get_stock_service] = lambda: service
+    _login()
+    return repository
+
+
+def test_get_portfolio(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state(), holding=make_holding())
+
+    response = client.get("/api/v1/stocks")
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks", "get")
+
+
+def test_get_portfolio_not_found(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(None)
+
+    response = client.get("/api/v1/stocks")
+
+    assert response.status_code == 404
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks", "get")
+
+
+def test_buy_stock(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state())
+
+    response = client.post("/api/v1/stocks/buy", json={"stock_type": "index", "amount": 50_000})
+
+    assert response.status_code == 201
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks/buy", "post")
+
+
+def test_buy_stock_insufficient_balance(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state(cash_balance=1_000))
+
+    response = client.post("/api/v1/stocks/buy", json={"stock_type": "index", "amount": 50_000})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INSUFFICIENT_BALANCE"
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks/buy", "post")
+
+
+def test_buy_stock_conflict_when_completed(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state(status="completed"))
+
+    response = client.post("/api/v1/stocks/buy", json={"stock_type": "index", "amount": 50_000})
+
+    assert response.status_code == 409
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks/buy", "post")
+
+
+def test_sell_stock_partial(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state(), holding=make_holding())
+
+    response = client.post("/api/v1/stocks/sell", json={"stock_type": "high_vol", "amount": 20_000})
+
+    assert response.status_code == 200
+    assert response.json()["holding"] is not None
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks/sell", "post")
+
+
+def test_sell_stock_all_returns_null_holding(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state(), holding=make_holding())
+
+    response = client.post("/api/v1/stocks/sell", json={"stock_type": "high_vol", "amount": 120_000})
+
+    assert response.status_code == 200
+    assert response.json()["holding"] is None
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks/sell", "post")
+
+
+def test_sell_stock_not_held(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state())
+
+    response = client.post("/api/v1/stocks/sell", json={"stock_type": "high_vol", "amount": 1_000})
+
+    assert response.status_code == 404
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks/sell", "post")
+
+
+def test_sell_stock_insufficient_holdings(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_stock(make_state(), holding=make_holding())
+
+    response = client.post("/api/v1/stocks/sell", json={"stock_type": "high_vol", "amount": 999_999})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INSUFFICIENT_HOLDINGS"
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/stocks/sell", "post")
+
+
+# ── loans ───────────────────────────────────────
+
+
+def make_loan(**overrides) -> Loan:
+    defaults = dict(
+        id=5,
+        user_id=USER_ID,
+        applied_credit_grade="B",
+        applied_credit_score=70,
+        applied_limit=3_000_000,
+        interest_rate=Decimal("5.50"),  # DB NUMERIC(4,2)가 돌려주는 값 — JSON 숫자로 직렬화돼야 한다(#64)
+        principal=1_000_000,
+        duration_months=6,
+        monthly_payment=170_000,
+        total_repayment=1_020_000,
+        remaining_balance=1_020_000,
+        status="active",
+        started_turn=1,
+        created_at=DB_NOW,
+    )
+    defaults.update(overrides)
+    return Loan(**defaults)
+
+
+def make_installment(**overrides) -> RepaymentSchedule:
+    defaults = dict(loan_id=5, installment_number=1, due_turn=2, amount=170_000, status="pending", paid_at_turn=None)
+    defaults.update(overrides)
+    return RepaymentSchedule(**defaults)
+
+
+def _override_loan(
+    state: SimulationState | None = None, loan: Loan | None = None, active_loan: Loan | None = None
+) -> MagicMock:
+    repository = MagicMock()
+    repository.find_all_by_user.return_value = [loan] if loan else []
+    repository.find_by_id.return_value = loan
+    repository.find_active_by_user.return_value = active_loan
+    repository.find_schedule_by_loan.return_value = [make_installment(), make_installment(installment_number=2, due_turn=3)]
+
+    def _create_with_schedule(new_loan: Loan, schedule: list[RepaymentSchedule]) -> Loan:
+        # DB autoincrement·server_default를 흉내
+        new_loan.id, new_loan.status, new_loan.created_at = 7, "active", DB_NOW
+        return new_loan
+
+    repository.create_with_schedule.side_effect = _create_with_schedule
+
+    credit_repository = MagicMock()
+    credit_repository.find_by_score.return_value = make_grade_policy(base_interest_rate=Decimal("5.50"))
+    credit_repository.find_all_ordered.return_value = [
+        make_grade_policy(grade="A+", grade_rank=1, min_score=95, max_score=100, base_interest_rate=Decimal("3.00")),
+        make_grade_policy(base_interest_rate=Decimal("5.50")),
+    ]
+    simulation_repository = MagicMock()
+    simulation_repository.find_by_user.return_value = state
+
+    service = LoanService(
+        db=MagicMock(),
+        repository=repository,
+        credit_repository=credit_repository,
+        simulation_repository=simulation_repository,
+    )
+    app.dependency_overrides[get_loan_service] = lambda: service
+    _login()
+    return repository
+
+
+def test_list_loans(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(loan=make_loan())
+
+    response = client.get("/api/v1/loans")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans", "get")
+
+
+def test_get_eligibility(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(state=make_state())
+
+    response = client.get("/api/v1/loans/eligibility")
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/eligibility", "get")
+
+
+def test_get_eligibility_not_found(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(state=None)
+
+    response = client.get("/api/v1/loans/eligibility")
+
+    assert response.status_code == 404
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/eligibility", "get")
+
+
+def test_get_quote(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(state=make_state())
+
+    response = client.get("/api/v1/loans/quote", params={"principal": 1_000_000, "duration_months": 12})
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/quote", "get")
+
+
+def test_get_active_loan(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(active_loan=make_loan())
+
+    response = client.get("/api/v1/loans/active")
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/active", "get")
+
+
+def test_get_active_loan_not_found(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan()
+
+    response = client.get("/api/v1/loans/active")
+
+    assert response.status_code == 404
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/active", "get")
+
+
+def test_apply_for_loan(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(state=make_state())
+
+    response = client.post("/api/v1/loans/apply", json={"principal": 1_000_000, "duration_months": 6})
+
+    assert response.status_code == 201
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/apply", "post")
+
+
+def test_apply_for_loan_already_active(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(state=make_state(), active_loan=make_loan())
+
+    response = client.post("/api/v1/loans/apply", json={"principal": 1_000_000, "duration_months": 6})
+
+    assert response.status_code == 409
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/apply", "post")
+
+
+def test_apply_for_loan_limit_exceeded(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(state=make_state())
+
+    response = client.post("/api/v1/loans/apply", json={"principal": 99_000_000, "duration_months": 6})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "LOAN_LIMIT_EXCEEDED"
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/apply", "post")
+
+
+def test_get_loan(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(loan=make_loan())
+
+    response = client.get("/api/v1/loans/5")
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/{loan_id}", "get")
+
+
+def test_get_loan_not_found(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan()
+
+    response = client.get("/api/v1/loans/5")
+
+    assert response.status_code == 404
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/{loan_id}", "get")
+
+
+def test_get_loan_schedule(client: TestClient, openapi_spec: SpecDict) -> None:
+    _override_loan(loan=make_loan())
+
+    response = client.get("/api/v1/loans/5/schedule")
+
+    assert response.status_code == 200
+    assert_response_matches_spec(openapi_spec, response, "/api/v1/loans/{loan_id}/schedule", "get")
+
+
+# ── 공통 에러 응답 (spec#12) ─────────────────────
+
+
+def _bearer_operations(spec: SpecDict) -> list[tuple[str, str]]:
+    """스펙에서 bearerAuth를 요구하는 operation 목록.
+
+    operation에 `security`가 없으면 루트 `security`(bearerAuth)를 따르고, `security: []`(공개)나
+    `refreshCookieAuth`만 요구하는 operation은 제외된다. 스펙에서 직접 뽑으므로 새 경로가 추가되면
+    자동으로 401 검증 대상에 들어온다.
+    """
+    default_security = spec.get("security", [])
+    return [
+        (path, method)
+        for path, method, operation in spec_operations(spec)
+        if any("bearerAuth" in requirement for requirement in operation.get("security", default_security))
+    ]
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """401 테스트를 스펙의 bearer operation으로 parametrize한다.
+
+    `@pytest.mark.parametrize(..., _bearer_operations(load_openapi_spec()))`처럼 모듈 import 시점에
+    스펙을 읽으면, spec 파일이 없을 때 load_openapi_spec의 skip/fail이 테스트 밖에서 호출돼 수집 오류로
+    세션 전체가 중단된다. 여기서는 파일이 없으면 빈 목록으로 parametrize해 이 테스트만 skip되게 두고,
+    로컬 skip·CI 실패 판단은 다른 계약 테스트의 openapi_spec fixture에 맡긴다.
+    """
+    if "bearer_operation" not in metafunc.fixturenames:
+        return
+    operations = _bearer_operations(load_openapi_spec()) if SPEC_PATH.exists() else []
+    metafunc.parametrize("bearer_operation", operations, ids=[f"{method.upper()} {path}" for path, method in operations])
+
+
+def test_unauthenticated_request_returns_401(
+    client: TestClient, openapi_spec: SpecDict, bearer_operation: tuple[str, str]
+) -> None:
+    path, method = bearer_operation
+    # 경로 파라미터는 모두 정수 id라 이름과 무관하게 1로 채운다 — 새 경로 파라미터가 생겨도 그대로 동작한다.
+    # 인증 의존성이 body 검증보다 먼저 실패하므로 body는 보내지 않는다.
+    url = re.sub(r"\{[^}]+\}", "1", path)
+
+    response = client.request(method, url)
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "UNAUTHENTICATED"
+    assert_response_matches_spec(openapi_spec, response, path, method)
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "url", "body"),
+    [
+        ("get", "/api/v1/simulation/turns", "/api/v1/simulation/turns?size=0", None),
+        ("post", "/api/v1/simulation/turns", "/api/v1/simulation/turns", {}),
+        ("get", "/api/v1/simulation/turns/{turn_number}", "/api/v1/simulation/turns/abc", None),
+        ("get", "/api/v1/credit/history", "/api/v1/credit/history?size=101", None),
+        ("get", "/api/v1/loans/quote", "/api/v1/loans/quote?principal=1000&duration_months=5", None),
+        ("post", "/api/v1/loans/apply", "/api/v1/loans/apply", {"principal": 0, "duration_months": 6}),
+        ("get", "/api/v1/loans/{loan_id}", "/api/v1/loans/abc", None),
+        ("post", "/api/v1/stocks/buy", "/api/v1/stocks/buy", {"stock_type": "crypto", "amount": 1}),
+        ("post", "/api/v1/stocks/sell", "/api/v1/stocks/sell", {"stock_type": "index", "amount": 0}),
+        ("post", "/api/v1/auth/login", "/api/v1/auth/login", {"email": "not-an-email", "password": "x"}),
+        ("post", "/api/v1/auth/email/verify", "/api/v1/auth/email/verify", {"email": "user@example.com", "code": "12"}),
+    ],
+)
+def test_invalid_request_returns_422(
+    client: TestClient, openapi_spec: SpecDict, method: str, path: str, url: str, body: dict | None
+) -> None:
+    _login()
+
+    response = client.request(method, url, json=body)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_REQUEST"
+    assert_response_matches_spec(openapi_spec, response, path, method)

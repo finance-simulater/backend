@@ -55,7 +55,7 @@ def test_requires_authentication() -> None:
 
     client = TestClient(app)
 
-    assert client.get("/api/v1/loans/").status_code == 401
+    assert client.get("/api/v1/loans").status_code == 401
     assert client.get("/api/v1/loans/1").status_code == 401
     assert client.get("/api/v1/loans/1/schedule").status_code == 401
 
@@ -125,7 +125,7 @@ def test_list_loans_scopes_to_current_user() -> None:
     app.dependency_overrides[get_current_user] = lambda: User(id=OWNER_ID)
 
     client = TestClient(app)
-    response = client.get("/api/v1/loans/")
+    response = client.get("/api/v1/loans")
 
     assert response.status_code == 200
     repository.find_all_by_user.assert_called_once_with(OWNER_ID)

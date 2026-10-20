@@ -2,9 +2,8 @@
 
 - 스펙 → 앱: 스펙에 있는 엔드포인트는 앱에 구현돼 있어야 한다.
 - 앱 → 스펙: 앱에 있는데 스펙에 없는 엔드포인트는 UNDOCUMENTED_ROUTES(허용 목록)에 있어야 한다.
-  auth/loans/stocks는 openapi.yaml에 아직 의도적으로 미문서화 상태라 허용 목록으로 예외 처리하고,
-  그 밖의 신규 라우트가 스펙 없이 추가되면 실패시킨다. 허용 목록을 비우는 작업은
-  finance-simulater/spec#9에서 진행한다.
+  스펙 없이 신규 라우트가 추가되면 실패시킨다. auth/loans/stocks는 finance-simulater/spec#9에서
+  문서화돼 허용 목록이 비었다(#66). 의도적으로 문서화를 미루는 라우트만 여기에 등록한다.
 """
 
 import pytest
@@ -16,30 +15,7 @@ pytestmark = pytest.mark.contract
 
 # openapi.yaml에 아직 경로가 없는 엔드포인트 (= 스펙 문서화 부채).
 # 스펙에 경로가 추가되면 test_undocumented_routes_are_not_stale이 실패하므로 여기서 지운다.
-UNDOCUMENTED_ROUTES: frozenset[tuple[str, str]] = frozenset(
-    {
-        # auth
-        ("/api/v1/auth/signup", "post"),
-        ("/api/v1/auth/email/send", "post"),
-        ("/api/v1/auth/email/verify", "post"),
-        ("/api/v1/auth/login", "post"),
-        ("/api/v1/auth/refresh", "post"),
-        ("/api/v1/auth/logout", "post"),
-        ("/api/v1/auth/me", "get"),
-        # loans
-        ("/api/v1/loans/", "get"),
-        ("/api/v1/loans/eligibility", "get"),
-        ("/api/v1/loans/quote", "get"),
-        ("/api/v1/loans/active", "get"),
-        ("/api/v1/loans/apply", "post"),
-        ("/api/v1/loans/{loan_id}", "get"),
-        ("/api/v1/loans/{loan_id}/schedule", "get"),
-        # stocks
-        ("/api/v1/stocks", "get"),
-        ("/api/v1/stocks/buy", "post"),
-        ("/api/v1/stocks/sell", "post"),
-    }
-)
+UNDOCUMENTED_ROUTES: frozenset[tuple[str, str]] = frozenset()
 
 
 def _app_routes() -> set[tuple[str, str]]:

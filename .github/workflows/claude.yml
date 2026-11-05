@@ -1,23 +1,25 @@
 name: Claude Code
 
+# 이슈·PR에서 Claude를 부르는 워크플로를 하나로 모은다 (#87).
+# PR 자동 리뷰는 claude-code-review.yml이 따로 담당한다.
 on:
   issue_comment:
     types: [created]
   pull_request_review_comment:
     types: [created]
   issues:
-    # assigned까지 받으면 이슈 생성과 담당자 지정이 연달아 일어날 때 같은 이슈로 2번 실행된다 (#49).
-    types: [opened]
+    # 이슈는 claude-review 라벨을 달 때만 반응한다. 본문·제목의 @claude로는 실행하지 않는다 (#87).
+    types: [labeled]
   pull_request_review:
     types: [submitted]
 
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'claude-review')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -37,15 +39,46 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
+          # 이슈에 이 라벨을 달면 이슈 분석을 시작한다 (#87).
+          label_trigger: 'claude-review'
+
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
 
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          # prompt: 'Update the pull request description to include a summary of changes.'
-
-          # 코멘트 응답 역할 분리(#49): PR 코멘트는 이 워크플로, 이슈 코멘트는 claude-issue-comment.yml.
-          # PR 응답 언어를 유지하려고 claude-issue-comment.yml의 한국어 설정을 옮겨온다.
+          # 기존 claude-pr.yml, claude-issue.yml, claude-issue-comment.yml의 응답 형식을 상황별로 합쳤다.
+          # 구독 사용량을 아끼려고 sonnet으로 고정한다 (기존 claude-pr.yml 등과 동일).
           claude_args: |
-            --append-system-prompt "당신은 한국어 코드 리뷰어입니다. 반드시 한국어로만 응답해야 합니다."
+            --model sonnet
+            --append-system-prompt "
+            당신은 한국어 코드 리뷰어입니다. 반드시 한국어로만 응답해야 합니다.
+            git branch checkout은 허용하지 않습니다.
 
+            상황에 따라 아래 형식을 따르세요. 사용자가 다른 요청을 명시하면 그 요청을 우선합니다.
+
+            [이슈에 claude-review 라벨이 달렸거나 이슈 분석을 요청받은 경우]
+            이슈와 관련하여 다음 항목을 구조적으로 간략하게 정리해 주세요.
+            1. 기능 목적: 이 기능이 필요한 이유와 기대 효과를 간략하게 설명해 주세요.
+            2. 영향 범위: 개발 시 영향을 받는 주요 컴포넌트/모듈/시스템 범위를 구체적으로 나열해 주세요.
+            3. 구현 전략: 실제 개발을 위한 단계별 구현 방안 및 전략을 제시해 주세요. 표나 목록으로 정리해 주세요.
+
+            [이슈 코멘트에서 호출된 경우]
+            이전 대화 내용에 기반하여 체계적으로 정리해 주세요.
+
+            [PR에서 리뷰를 요청받은 경우]
+            코드 변경 사항에 대해 철저하고 건설적이며 실행 가능한 피드백을 제공하세요.
+            - 잠재적 버그, 예외 사례, 논리 오류, 성능 영향, 보안 취약성을 확인
+            - 특정 줄을 참조해 문제를 설명하고, 코드 예시로 구체적인 개선안을 제안
+            - 심각도(🔴반드시 변경 필요, 🟡변경 권장, 🟢개선 제안)로 우선순위를 지정
+            - 전체 코드베이스 검토를 명시적으로 요청받지 않는 한, 최근 수정된 코드에 집중
+            리뷰 코멘트 형식:
+            ## 🤖 PR 리뷰
+            ### ✅ 긍정적인 부분
+            - [구체적인 장점들]
+            ### ⚠️ 변경이 필요한 부분
+            - [변경이 필요한 부분들과 코드 링크]
+            ### 🔍 상세 리뷰
+            - **[파일명]**: [상세 리뷰 내용 및 파일 링크]
+            ### 💪 추가 권장 사항
+            - [중요도 순으로 제시]
+            "

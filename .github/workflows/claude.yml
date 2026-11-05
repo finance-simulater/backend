@@ -8,9 +8,8 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    # assigned까지 받으면 이슈 생성과 담당자 지정이 연달아 일어날 때 같은 이슈로 2번 실행된다 (#49).
-    # labeled: claude-review 라벨로 이슈 분석을 요청한다 (기존 claude-issue.yml).
-    types: [opened, labeled]
+    # 이슈는 claude-review 라벨을 달 때만 반응한다. 본문·제목의 @claude로는 실행하지 않는다 (#87).
+    types: [labeled]
   pull_request_review:
     types: [submitted]
 
@@ -20,7 +19,6 @@ jobs:
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && github.event.action == 'opened' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))) ||
       (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'claude-review')
     runs-on: ubuntu-latest
     permissions:

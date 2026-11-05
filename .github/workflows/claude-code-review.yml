@@ -46,8 +46,11 @@ jobs:
           plugins: 'code-review@claude-code-plugins'
           # --comment가 없으면 플러그인은 리뷰만 하고 PR에 코멘트를 게시하지 않는다 (#87).
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment'
-          # 필요한 gh 명령과 인라인 코멘트 도구 권한은 플러그인 명령 파일(allowed-tools)에 선언돼 있다.
+          # 필요한 gh 명령 권한은 플러그인 명령 파일(allowed-tools)에 선언돼 있다.
+          # 인라인 코멘트 MCP 서버는 액션이 띄우는데, prompt 모드에서는 --allowedTools에 도구가 있어야만 띄운다.
+          # 빠지면 플러그인이 리뷰를 끝내고도 코멘트를 게시하지 못한 채 success로 끝난다 (#94).
           claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment"
             --append-system-prompt "모든 리뷰 코멘트는 한국어로 작성하세요."
           # 리뷰가 게시되지 않는 원인 확인용 임시 설정. 확인 후 제거한다 (#94).
           # 공개 저장소라 Claude의 도구 입출력이 Actions 로그에 그대로 공개된다.

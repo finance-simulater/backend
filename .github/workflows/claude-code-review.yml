@@ -36,7 +36,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           # 액션은 첫 result에서 실행을 끝내므로, 서브에이전트가 백그라운드로 돌면 결과 없이 success로 끝난다 (#53).
-          # code-review 플러그인은 서브에이전트를 여러 개 띄우므로, 백그라운드 실행 옵션 자체를 Claude에게 주지 않는다 (#87).
+          # 최근 Claude Code는 서브에이전트를 기본으로 백그라운드에서 실행해, 메인 세션이 결과를 기다리지 않고 끝날 수 있다.
+          # code-review 플러그인은 서브에이전트에 의존하므로 백그라운드 실행 옵션을 막는다. 병렬 실행은 그대로 동작한다 (#87).
           # 참고: https://github.com/anthropics/claude-code-action/issues/1499
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
